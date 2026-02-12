@@ -1,0 +1,72 @@
+Consent Mail Trigger :
+
+	It Occurs immediately after successful upload of an Internet Banking (IB) file.
+	
+	After the Internet Banking (IB) file is uploaded by the DO team,
+	the system automatically sends a consent email from the DO system to the merchant owner’s email ID (provided in the IB file)
+	asking the customer to confirm consent before onboarding continues
+	
+	
+	Consent Mail Screen:
+	
+	Every time open the Upload menu ---> System fetches the records if consent mail is pending
+	
+	Consent staus screen --->  file name | Merchant Name | Expiry days | Consent_Status(Pending) | Resend button 
+	
+
+	Every time the Bulk Upload menu is opened:
+
+		The system automatically checks for all merchants whose Consent Status = Pending in the table.
+
+		If pending consent records exist → the Consent Mail Status screen will be displayed automatically (as a sub-screen or popup).
+
+		If no pending consents → normal upload page opens directly.
+		
+		
+  Page Design:
+
+	In IB merchant upload - will show sub-screen page -----> it contains to show Consent Mail Status and Time period only Pending and ERROR
+	
+	 pending -- hold the records the email IDs - if limited days will expired , resend button will be show and process the resend the mail
+	 
+	 ERROR -- check the ValidEmail ID first, if not correct the Email ID and sent mail to it
+	 
+	 
+-------------------------------------------------------------------------------------------------------------------------------------------------
+Consent Mail Template -- content:
+
+Subject: Consent Required – Merchant Onboarding Request
+	Dear <Merchant Name>,
+	Thank you for showing interest in becoming a registered merchant with <Bank Name>.
+	We have received your basic details from our Internet Banking portal as part of your merchant enrollment request.
+	To proceed further with your onboarding, we require your confirmation.
+	Please review and approve this consent to continue your merchant onboarding process.
+	By approving this request, you confirm that:
+	You wish to proceed with merchant onboarding.
+	The details submitted are accurate to the best of your knowledge.
+	Kindly click the link below to provide your consent:
+	<Consent Approval Link>
+	If you did not initiate this request, please ignore this email.
+Thank you,
+DIB – Merchant Services Team
+<Contact Email> | <Phone Number>
+	 
+	 
+	
+	
+	
+	
+	
+	
+
+
+
+
+
+
+
+
+
+
+
+
