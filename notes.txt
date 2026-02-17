@@ -1,7 +1,0 @@
-Method to view:
-
-BulkMerchantOnboard.action --> uploadBulkMerchantOnboard()- processBulkUploadMerchantFile
-
-MerchantOnboardServiceImpl ---> readBulkData & validateBulkField
-
-
