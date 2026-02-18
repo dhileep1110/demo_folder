@@ -1,0 +1,350 @@
+package com.fss.maps.common.schedular;
+
+
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+
+import com.fss.maps.reports.action.schedular.TransactionEmailNotificationSchedule;
+
+import com.fss.maps.common.util.logger.LoggerUtil;
+
+
+public class Schedular  implements ServletContextListener {
+	
+
+	private LoggerUtil loggerUtil = new LoggerUtil(this.getClass());
+
+
+	public void contextInitialized(ServletContextEvent servletContextEvent)
+	{
+		try
+		{
+		    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+				System.setProperty("config.propertiesFile.name", servletContextEvent.getServletContext().getInitParameter("COMMON-MODULE-CONFIGFILE-WINLOCATION"));
+			}else{
+				System.setProperty("config.propertiesFile.name",servletContextEvent.getServletContext().getInitParameter("COMMON-MODULE-CONFIGFILE-LOCATION"));
+			}
+			 EmailSchedule.genEmailSchedule();
+			TransactionEmailNotificationSchedule.getEmailNotificationSchedule();
+			//MasterCardSettlementSchedule.genMasterCardSchedule();
+			//VisaSettlementSchedule.genVisaSchedule();
+			
+		}
+		catch (Exception e) 
+		{
+//		e.printStackTrace();
+			loggerUtil.error("Exception:"+e.toString());
+		}
+		finally
+		{
+						
+		}
+	}
+	
+	public void contextDestroyed(ServletContextEvent servletContextEvent) 
+	{
+		
+		
+	}
+	
+
+
+
+}
+--------------------------------
+2.
+package com.fss.maps.reports.action.schedular;
+
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import org.quartz.CronScheduleBuilder;
+import org.quartz.JobBuilder;
+import org.quartz.JobDetail;
+import org.quartz.Scheduler;
+import org.quartz.Trigger;
+import org.quartz.TriggerBuilder;
+import org.quartz.impl.StdSchedulerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import com.fss.maps.common.util.CustomApplicationContext;
+import com.fss.maps.common.util.logger.LoggerUtil;
+import com.fss.maps.reports.action.schedular.ExecutePGEmailService;
+import com.fss.maps.reports.action.schedular.ExecutePOSEmailService;
+import com.fss.maps.reports.bean.schedular.TransactionEmailNotificationScheduleBean;
+
+
+
+public class TransactionEmailNotificationSchedule {
+
+
+	public static Scheduler scheduler=null;
+    private TransactionEmailNotificationScheduleBean transactionEmailNotificationScheduleBean;
+
+	public static Scheduler getScheduler() {
+		return scheduler;
+	}
+
+	public static void setScheduler(Scheduler scheduler) {
+		TransactionEmailNotificationSchedule.scheduler = scheduler;
+	}
+
+
+
+
+	public static boolean getEmailNotificationSchedule() throws Exception {
+		LoggerUtil LOG = new LoggerUtil(TransactionEmailNotificationSchedule.class);
+
+		try
+		{
+			LOG.info("getEmailNotificationSchedule End ");
+			Trigger trigger=null;
+	    	JobDetail job=null;
+	    	StringBuffer buffer = new StringBuffer();
+	    	scheduler = new StdSchedulerFactory().getScheduler();
+	    	scheduler.start();
+
+			List<TransactionEmailNotificationScheduleBean> schedulerList = getSchedularDetails();
+//			System.out.println(schedulerList.size());
+			int triggerTimeInterval = getTriggerTimeInterval();
+			
+			if (schedulerList != null && schedulerList.size() > 0) {
+				Iterator<TransactionEmailNotificationScheduleBean> iterator = schedulerList.iterator();
+				while (iterator.hasNext()) {
+					TransactionEmailNotificationScheduleBean scheduleBean = iterator.next();
+					try {
+						
+						
+						if(scheduleBean.getStatus().equals("1")){
+//							System.out.println(scheduleBean.getSchedularName());
+							
+							int startTime = Integer.parseInt(scheduleBean.getStartTime());
+							int endTime = Integer.parseInt(scheduleBean.getEndTime())-1;
+							
+							buffer.append("0");
+							buffer.append(" ");
+							buffer.append("*/"+triggerTimeInterval);
+							buffer.append(" ");
+							
+							buffer.append(startTime);
+							buffer.append("-");
+							buffer.append(endTime);
+							
+							buffer.append(" ");
+							buffer.append("*");
+							buffer.append(" ");
+							buffer.append("*");
+							buffer.append(" ");
+							buffer.append("?");
+//							System.out.println("Expression : "+buffer.toString());
+						
+							if(scheduleBean.getJobName().equals("1")){
+								
+								job = JobBuilder.newJob(ExecutePGEmailService.class).withIdentity(scheduleBean.getSchedularName()).usingJobData("InstId", scheduleBean.getInstId()).usingJobData("DeclineTime", scheduleBean.getDeclineTime()).build();	  
+								   
+							}else{
+								
+								job = JobBuilder.newJob(ExecutePOSEmailService.class).withIdentity(scheduleBean.getSchedularName()).usingJobData("InstId", scheduleBean.getInstId()).usingJobData("DeclineTime", scheduleBean.getDeclineTime()).build();	  
+							}
+							
+						       trigger = TriggerBuilder.newTrigger().withSchedule(CronScheduleBuilder.cronSchedule(buffer.toString())).withIdentity(scheduleBean.getSchedularName()).build();
+							   scheduler.scheduleJob(job, trigger);
+							   
+							   buffer.delete(0, buffer.length());
+							
+						}
+						
+						
+						
+						LOG.info("getEmailNotificationSchedule() End ");
+					} catch (Exception e) {
+						LOG.error("Error in getEmailNotificationSchedule() ", e);
+						
+					}
+
+				}
+			}
+			
+		}
+		
+	    catch (Exception e) {
+	    	e.printStackTrace();
+	    	LOG.error("Failed to start getEmailNotificationSchedule ",e);
+		   return false;	
+		}
+	   
+		LOG.info("Inside getEmailNotificationSchedule() end ");
+      return true;
+	}
+
+	public static List<TransactionEmailNotificationScheduleBean> getSchedularDetails() throws Exception {
+
+		LoggerUtil LOG = new LoggerUtil(TransactionEmailNotificationSchedule.class);
+	    LOG.info("getSchedularDetails() Start");
+		StringBuffer query=new StringBuffer();
+		List<Object> args = new ArrayList<Object>();
+		JdbcTemplate jdbcTemplate = (JdbcTemplate) CustomApplicationContext
+				.getApplicationContext().getBean("jdbcTemplate");
+	
+		List<TransactionEmailNotificationScheduleBean> transactionEmailNotificationScheduleBean = new ArrayList<TransactionEmailNotificationScheduleBean>();
+		try
+		{
+
+			query.append("  SELECT  ");
+			query.append(" MDS_INST_ID as instid,MDS_SCLDR_SQID as sqid, ");
+			query.append(" MDS_SCLDR_NAME as schedularname, ");
+			query.append(" MDS_START_TIME as starttime, ");
+			query.append(" MDS_END_TIME as endtime,   ");
+			query.append(" MDS_TXN_DECL_DUR as declinetime,");
+			query.append(" MDS_JOB_NAME as jobname,    ");
+			query.append(" MDS_SCLDR_STATUS as status ");  
+		    query.append(" FROM MPS_DASHBOARD_SCHEDULAR_DETL ");
+		    query.append(" WHERE MDS_SCLDR_STATUS =1 "); 
+		
+
+		    transactionEmailNotificationScheduleBean = jdbcTemplate.query(query.toString(), new RowMapper<TransactionEmailNotificationScheduleBean>() {
+				public TransactionEmailNotificationScheduleBean mapRow(ResultSet rs, int arg1) throws SQLException 
+				{
+					TransactionEmailNotificationScheduleBean bean = new TransactionEmailNotificationScheduleBean();
+					bean.setInstId(rs.getString("instid"));
+					bean.setSchedularSqid(rs.getString("sqid"));
+					bean.setSchedularName(rs.getString("schedularname"));
+					bean.setStartTime(rs.getString("starttime"));
+					bean.setEndTime(rs.getString("endtime"));
+					bean.setDeclineTime(rs.getString("declinetime"));
+					bean.setJobName(rs.getString("jobname"));
+					bean.setStatus(rs.getString("status"));
+					
+				
+					return bean;
+				}
+			});	
+	}catch(Exception e){
+		LOG.error("Error Occurred in getSchedularDetails() ",e);
+//		System.out.println(e);
+	}
+	LOG.info("getSchedularDetails() End");
+	return transactionEmailNotificationScheduleBean;
+
+	}
+	
+	public static int getTriggerTimeInterval() {
+
+		JdbcTemplate jdbcTemplate = (JdbcTemplate) CustomApplicationContext.getApplicationContext().getBean("jdbcTemplate");
+		int paramValue;
+		
+		String query = " select MGP_PARM_VALU from MPS_GENR_PARM_MAST where MGP_PARM_KEY=? ";
+		paramValue = jdbcTemplate.queryForObject(query.toString(),Integer.class,81);
+		return paramValue;
+	}
+	
+	
+	
+}
+----------------------------------------------------------------------------------------------------
+
+3.
+package com.fss.maps.common.schedular;
+
+import org.quartz.CronScheduleBuilder;
+import org.quartz.JobBuilder;
+import org.quartz.JobDetail;
+import org.quartz.Scheduler;
+import org.quartz.Trigger;
+import org.quartz.TriggerBuilder;
+import org.quartz.impl.StdSchedulerFactory;
+
+import com.fss.maps.common.util.LoadConfigValueFromProperty;
+import com.fss.maps.common.util.logger.LoggerUtil;
+
+
+public class EmailSchedule {
+	/********************************************************************************
+	Purpose in brief		: To Schedule Email
+	*********************************************************************************/
+	//private static final LoggerUtil LOG = new LoggerUtil(EmailSchedule.class);
+	public static boolean genEmailSchedule() throws Exception {
+		LoggerUtil LOG = new LoggerUtil(EmailSchedule.class);
+		LoadConfigValueFromProperty loadConfigPath = new LoadConfigValueFromProperty();
+		JobDetail job=null;
+		String scheduleTime=null;
+		String[] scheduleTimeForm=null;
+		StringBuffer buffer=null;
+		Trigger trigger=null;
+		Scheduler scheduler=null;
+		
+		try
+		{
+			LOG.info("Inside genPrepaidSchedule() start");
+		//PGLogger.logTrace("Inside genPrepaidSchedule()");
+	    job = JobBuilder.newJob(ExecuteEmailService.class).build();	    
+	    scheduleTime = loadConfigPath.getValueFromProperty("EMAIL_SCHEDULE_TIME");
+	    if(scheduleTime!=null)
+	    {
+	    scheduleTimeForm = scheduleTime.split(":");
+		buffer = new StringBuffer();
+		if(scheduleTimeForm[2].startsWith("0")&&!scheduleTimeForm[2].startsWith("1"))
+		{
+		buffer.append(scheduleTimeForm[2].substring(1));
+		}
+		else{
+		buffer.append(scheduleTimeForm[2]);
+		}
+		buffer.append(" ");
+		if(scheduleTimeForm[1].startsWith("0")&&!scheduleTimeForm[1].startsWith("1"))
+		{
+		buffer.append(scheduleTimeForm[1].substring(1));
+		}
+		else
+		{
+		buffer.append(scheduleTimeForm[1]);
+		}
+		buffer.append(" ");
+		if(scheduleTimeForm[0].startsWith("0")&&!scheduleTimeForm[1].startsWith("1"))
+		{
+		buffer.append(scheduleTimeForm[0].substring(1));
+		}
+		else
+		{
+		buffer.append(scheduleTimeForm[0]);
+		}
+		buffer.append(" ");
+		buffer.append("*");
+		buffer.append(" ");
+		buffer.append("*");
+		buffer.append(" ");
+		buffer.append("?");
+		LOG.info("Schedule time - "+buffer.toString());
+		trigger = TriggerBuilder.newTrigger().withSchedule(CronScheduleBuilder.cronSchedule(buffer.toString())).build();
+	    scheduler = new StdSchedulerFactory().getScheduler();
+		scheduler.start();
+		scheduler.scheduleJob(job, trigger);
+	    }
+	    else
+	    {
+	    	LOG.info("Schedule time not configured in config file ");
+	    	//PGLogger.logTrace("Schedule time not configured in config file");
+	    }
+	    }
+		
+	    catch (Exception e) {
+	    	e.printStackTrace();
+	    	LOG.error("Failed to start Email Schedule ",e);
+		   return false;	
+		}
+	    finally
+	    {
+	    	 job=null;
+		     scheduleTime=null;
+			 scheduleTimeForm=null;
+			 buffer=null;
+			 trigger=null;
+			 scheduler=null;
+	    }
+		LOG.info("Inside genPrepaidSchedule() end ");
+      return true;
+	}
+}
