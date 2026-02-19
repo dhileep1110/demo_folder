@@ -1,0 +1,459 @@
+BulkUploadAction:
+
+output = merchantOnboardService.processBulkUploadMerchantFile(merchantOnboardBean, filepath+descfilename.toString(), descfilename.toString(), uploadType, sessionBean);
+
+
+Service class:
+
+public Integer processBulkUploadMerchantFile(MerchantOnboardBean merchantBean, String srcFilePathwithname, String filename, String uploadType, SessionBean sessionBean) {
+		InstHashcodeMapper.setInstitution(sessionBean.getInstCode());
+		Integer output = 0; 
+		List<MerchantOnboardBean> merchantOnboardBean = null;
+		List<String> merchantErrorList = new ArrayList<String>();
+		String status = null;
+		try {
+			merchantOnboardBean = merchantOnboardDAO.getMasterUploadData(uploadType);
+			output = readBulkData(merchantBean, srcFilePathwithname, filename, merchantOnboardBean, uploadType, sessionBean.getUserId(), sessionBean.getInstCode(), merchantErrorList);
+			if(output > 0 && merchantErrorList.isEmpty()) {
+				status = (String) transactionTemplate.execute(new TransactionCallback() {
+					public String doInTransaction(TransactionStatus ts) {
+						String result = "";
+						String procStatus = "OK";
+						loggerUtil.debug("Before calling procedure: SP_BULK_UPLD");
+						try {
+							procStatus = merchantOnboardDAO.callBulkUpldProcedure(sessionBean);
+						} catch (Exception e) {
+							loggerUtil.error("Error occure while calling callBulkUpldProcedure : " + e.getMessage());
+						}
+						if (procStatus.equals("OK")) {
+							result = "OK";
+						} else {
+							result = procStatus;
+							ts.setRollbackOnly();
+						}
+						return result;
+					}
+				});
+						
+				if (!"OK".equals(status)) {
+		            merchantBean.setErrorDesc("Procedure SP_BULK_UPLD failed with status: " + status);
+		            loggerUtil.debug("Status of procedure SP_BULK_UPLD is : " + status);
+		        } else {
+		            merchantBean.setErrorDesc("SUCCESS");
+		        }
+			}
+		} catch (Exception e) {
+			loggerUtil.error("Error while processing processBulkUploadMerchantFile", e);
+		} finally {
+			merchantOnboardBean = null;
+			merchantErrorList.clear();
+			merchantErrorList = null;
+			status = null;
+		}
+		return output;
+	}
+	
+	
+	private Integer readBulkData(MerchantOnboardBean merchantBean, String srcFilePathwithname, String filename, List<MerchantOnboardBean> merchantOnboardBean, String uploadType,
+			String userId, String instCode, List<String> merchantErrorList) {
+	    
+	    Integer output = 0;
+	    XSSFWorkbook workbook = null;
+	    try {
+	        if (!new PathValidator(new PathCleaner(), new PathTraversalDetector()).validatePath(srcFilePathwithname)) {
+	            loggerUtil.error("Invalid file path: " + srcFilePathwithname);
+	            return 0;
+	        }
+
+	        workbook = new XSSFWorkbook(new FileInputStream(srcFilePathwithname));
+	        XSSFSheet sheet = workbook.getSheetAt(0);
+	        int totalRows = sheet.getPhysicalNumberOfRows();
+
+	        if (totalRows <= 1) {
+	            loggerUtil.error("No data rows found in the uploaded Excel file: " + filename);
+	            String errorMsg = "No data rows found in the uploaded Excel file : " + filename +". Please ensure at least one record is present below the header.";
+	            merchantErrorList.add(errorMsg);
+	            merchantBean.setErrorDesc(errorMsg);
+	            return 0;
+	        }
+	        
+	        for (int rowIndex = 1; rowIndex < totalRows; rowIndex++) {
+	            XSSFRow row = sheet.getRow(rowIndex);
+	            if (row == null) continue;
+
+	            List<String> cellValues = new ArrayList<>();
+	            int notBlankCount = 0;
+
+	            for (int colIndex = 0; colIndex < EXPECTED_COLUMN_COUNT; colIndex++) {
+	                XSSFCell cell = row.getCell(colIndex, Row.MissingCellPolicy.CREATE_NULL_AS_BLANK);
+	                String cellValue = new DataFormatter().formatCellValue(cell).trim().replaceAll("\\P{Print}", "").replace("$", "").replace("&", "");
+	                cellValue = StringEscapeUtils.escapeHtml4(cellValue);
+	                if (!cellValue.trim().isEmpty()) notBlankCount++;
+	                cellValues.add(cellValue);
+	            }
+
+	            if (cellValues.size() > EXPECTED_COLUMN_COUNT) {
+	                cellValues = cellValues.subList(0, EXPECTED_COLUMN_COUNT);
+	            }
+
+	            int firstDataCol = -1;
+	            for (int i = 0; i < cellValues.size(); i++) {
+	                if (!cellValues.get(i).trim().isEmpty()) {
+	                    firstDataCol = i;
+	                    break;
+	                }
+	            }
+	            if (firstDataCol > 0) {
+	                List<String> aligned = new ArrayList<>(Collections.nCopies(EXPECTED_COLUMN_COUNT, ""));
+	                int shiftOffset = EXPECTED_COLUMN_COUNT - (cellValues.size() - firstDataCol);
+	                if (shiftOffset < 0) shiftOffset = 0;
+	                for (int i = firstDataCol; i < cellValues.size(); i++) {
+	                    aligned.set(i - firstDataCol + shiftOffset, cellValues.get(i));
+	                }
+	                cellValues = aligned;
+	            }
+	            
+	            if (notBlankCount > 0) {
+	            	output = validateBulkField(merchantBean, cellValues, rowIndex, uploadType, merchantOnboardBean, userId, instCode, srcFilePathwithname, filename, merchantErrorList);	
+	            }
+	            	    } catch (Exception e) {
+	        loggerUtil.error("Error while reading Bulk Upload File: ", e);
+	    } finally {
+	        try {
+	            if (workbook != null) workbook.close();
+	        } catch (IOException e) {
+	            loggerUtil.error("Error closing workbook: ", e);
+	        }
+	    }
+
+	    return output;
+	}
+	
+	private Integer validateBulkField(MerchantOnboardBean merchantBean,List<String> merchantBodyList, int recordNum, String uploadType,
+		List<MerchantOnboardBean> merchantOnboardBean, String userId, String instCode, String srcFilePathwithname, String filename, List<String> merchantErrorList)
+	{
+		Integer output = 0, recStus = 0, dupCount = 0, bulkLogRefId = 0, bulkAppNmbr = 0, recStusToInsert = 0;
+		String fieldErrorDescBulk = "OK", isMandatoryFlag = null, validationType = null, fieldDesc = null, condValidType = null, 
+				possibleValues = null, tokenval = null, mercCode = null, custEmail = null, custPan = null, errorDesc = null;
+		List<String> rowErrors = new ArrayList<>();
+		boolean hasRowErrors = false, isErrorDescEmpty = false;
+	    //List<String> duplicateLegalNames = new ArrayList<>();
+		//List<String> duplicatePANs = new ArrayList<>();
+		try {
+			
+			bulkLogRefId = merchantOnboardDAO.getBulkLogRefId();
+			bulkAppNmbr = merchantOnboardDAO.getBulkAppNmbr();
+			merchantOnboardDAO.insertBulkUpldLogDetails(Integer.parseInt(instCode), bulkLogRefId, filename, merchantBodyList.toString().substring(1, merchantBodyList.toString().length() - 1), bulkAppNmbr);
+			
+			for (int i = 0; i < merchantBodyList.size(); i++) {
+				fieldErrorDescBulk = "";
+				isMandatoryFlag = merchantOnboardBean.get(i).getMandatoryFlag();
+				validationType = merchantOnboardBean.get(i).getValidationType();
+				fieldDesc = merchantOnboardBean.get(i).getFieldDesc();
+				condValidType = merchantOnboardBean.get(i).getCondValidType();
+				possibleValues = merchantOnboardBean.get(i).getPosibleValues();
+				tokenval = merchantBodyList.get(i) == null ? "" : merchantBodyList.get(i).trim();
+				
+				if (isMandatoryFlag.equals("Y") || condValidType.equals("Y") || isMandatoryFlag.equals("N") && tokenval.length() > 0) 
+				{
+					if(possibleValues!=null && !possibleValues.equals("")){
+						boolean check = true;
+						String values[] = possibleValues.split(",");
+						for (String val : values) {
+							//if(val.contains(tokenval)){
+							if (val.trim().equalsIgnoreCase(tokenval.trim())) {
+								check = false;
+								break;
+							}
+						}
+						if(check){
+							fieldErrorDescBulk = fieldDesc+" : Field should contain possible values ("+possibleValues+") only";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					
+					if (validationType.equals("AL")) { // Alpha
+						if (!isAlpha(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have Alphabet only";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					if (validationType.equals("ALS")) { // Alpha with Space
+						if (!isAlphaWithSpace(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have Alphabet only with space";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					if (validationType.equals("N")) { // Numeric
+						if (!isNumeric(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have numbers only";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					if (validationType.equals("AN")) {// Alphanumeric
+						if (!isAlphaNumeric(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have alphanumeric values only";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					if (validationType.equals("ANS")) {// Alphanumeric with space
+						if (!isAlphaNumericWithSpace(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have alphanumeric with space values only";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					if (validationType.equals("EMAIL")) {// Valid email check
+						if (!isValidEmail(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have proper email Id";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					if (validationType.equals("ANSPCL")) {// Alphanumeric with special chars
+						if (!isAplhaNumericWithSpaceAndSpecialChar(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have alphanumeric with special chars values only";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					if (validationType.equals("PAN")) {// Valid PAN check
+						if (!isValidPAN(tokenval)) {
+							fieldErrorDescBulk = fieldDesc + " : Field should have proper PAN format";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						if (tokenval.length() > merchantOnboardBean.get(i).getFieldLength()) {
+							fieldErrorDescBulk = fieldDesc + " : Field length should not be greater than " + merchantOnboardBean.get(i).getFieldLength();
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					
+					if (isMandatoryFlag.equals("Y") && tokenval.equals("")) {
+						if(merchantBodyList.get(i) == null || merchantBodyList.get(i).equals("")) {
+							fieldErrorDescBulk = fieldDesc + " : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+					}
+					
+					// 2 -- MID
+					if(i == 2 && merchantBodyList.get(2).length() > 9) {
+						fieldErrorDescBulk = fieldDesc + " :  should be less than or equal to 9 digit values";
+						recStus = 3;
+						if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+					}
+					
+					// 23 -- SID
+					if(i == 23 && (merchantBodyList.get(23).length() < 8 || merchantBodyList.get(23).length() > 15)) {
+						fieldErrorDescBulk = fieldDesc + " : should contain between 8 and 15 digit values";
+						recStus = 3;
+						if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+					}
+					
+					// 49 -- TID
+//					if(i == 49 && merchantBodyList.get(39).equals("YES") && merchantBodyList.get(49).length() > 8) {
+					if(i == 49 && merchantBodyList.get(49).length() > 8) {
+						fieldErrorDescBulk = fieldDesc + " : Should less than or equal to 8 digit values";
+						recStus = 3;
+						if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+					}
+										
+					// 34 -- GST Flag
+					/*if ((i == 31 && merchantBodyList.get(31).equals("YES"))){
+						String gstno = merchantBodyList.get(32) == null ? "" : merchantBodyList.get(32).trim();
+						String condValidType1 = merchantOnboardBean.get(32).getCondValidType() == null ? "N" : merchantOnboardBean.get(32).getCondValidType();
+						if (condValidType1.equals("Y") && gstno.equals("")) {
+							fieldErrorDescBulk = "GST Number : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { merchantErrorList.add(fieldErrorDescBulk); }
+						}
+						gstno = null; condValidType1 = null;
+					}*/
+					
+					// 34 -- IS Govt Registered Merchant
+					if ((i == 34 && merchantBodyList.get(34).equalsIgnoreCase("YES"))){
+						String mco = merchantBodyList.get(35) == null ? "" : merchantBodyList.get(35).trim();
+						String condValidType1 = merchantOnboardBean.get(35).getCondValidType() == null ? "N" : merchantOnboardBean.get(35).getCondValidType();
+						if (condValidType1.equalsIgnoreCase("Y") && mco.trim().isEmpty()) {
+							fieldErrorDescBulk = "Merchant Country Origin : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						mco = null; condValidType1 = null;
+					}
+					
+					// 39 -- IS Terminal Required
+					if ((i == 39 && merchantBodyList.get(39).equalsIgnoreCase("YES"))){
+						String termID = merchantBodyList.get(49) == null ? "" : merchantBodyList.get(49).trim();
+						String condValidType1 = merchantOnboardBean.get(49).getCondValidType() == null ? "N" : merchantOnboardBean.get(49).getCondValidType();
+						if (condValidType1.equalsIgnoreCase("Y") && termID.trim().isEmpty()) {
+							fieldErrorDescBulk = "Terminal ID : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						termID = null; condValidType1 = null;
+					}
+					
+					// 40 -- Account with Bank
+					if ((i == 40 && merchantBodyList.get(40).equalsIgnoreCase("YES"))){
+						String acctBranch = merchantBodyList.get(41) == null ? "" : merchantBodyList.get(41).trim();
+						String condValidType1 = merchantOnboardBean.get(41).getCondValidType() == null ? "N" : merchantOnboardBean.get(41).getCondValidType();
+						if (condValidType1.equalsIgnoreCase("Y") && acctBranch.trim().isEmpty()) {
+							fieldErrorDescBulk = "Account Branch : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						acctBranch = null; condValidType1 = null;
+					} else if ((i == 40 && merchantBodyList.get(40).equalsIgnoreCase("NO"))){ // 44 -- Bank Name
+						String bankName = merchantBodyList.get(42) == null ? "" : merchantBodyList.get(43).trim();
+						String condValidType1 = merchantOnboardBean.get(42).getCondValidType() == null ? "N" : merchantOnboardBean.get(42).getCondValidType();
+						if (condValidType1.equalsIgnoreCase("Y") && bankName.trim().isEmpty()) {
+							fieldErrorDescBulk = "Bank Name : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { rowErrors.add(fieldErrorDescBulk); }
+						}
+						bankName = null; condValidType1 = null;
+					}
+					
+					// 48 -- Geo Coordinates
+					/*if ((i == 48 && merchantBodyList.get(48).equals("YES"))){
+						String latitude = merchantBodyList.get(49) == null ? "" : merchantBodyList.get(49).trim();
+						String condValidType1 = merchantOnboardBean.get(49).getCondValidType() == null ? "N" : merchantOnboardBean.get(49).getCondValidType();
+						if (condValidType1.equals("Y") && latitude.equals("")) {
+							fieldErrorDescBulk = "Latitude : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { merchantErrorList.add(fieldErrorDescBulk); }
+						}							
+						String longitude = merchantBodyList.get(50) == null ? "" : merchantBodyList.get(50).trim();
+						String condValidType2 = merchantOnboardBean.get(50).getCondValidType() == null ? "N" : merchantOnboardBean.get(50).getCondValidType();
+						if (condValidType2.equals("Y") && longitude.equals("")) {
+							fieldErrorDescBulk = "Longitude : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { merchantErrorList.add(fieldErrorDescBulk); }
+						}
+						latitude = null; condValidType1 = null; longitude = null; condValidType2 = null;
+					}*/
+														
+					// 52 -- Enable QR
+					/*if ((i == 52 && merchantBodyList.get(52).equals("YES"))){
+						String appId = merchantBodyList.get(53) == null ? "" : merchantBodyList.get(53).trim();
+						String condValidType1 = merchantOnboardBean.get(53).getCondValidType() == null ? "N" : merchantOnboardBean.get(53).getCondValidType();
+						if (condValidType1.equals("Y") && appId.equals("")) {
+							fieldErrorDescBulk = "Application ID : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { merchantErrorList.add(fieldErrorDescBulk); }
+						}
+						String authToken = merchantBodyList.get(54) == null ? "" : merchantBodyList.get(54).trim();
+						String condValidType2 = merchantOnboardBean.get(54).getCondValidType() == null ? "N" : merchantOnboardBean.get(54).getCondValidType();
+						if (condValidType2.equals("Y") && authToken.equals("")) {
+							fieldErrorDescBulk = "Authentication Token : Field Should not be Empty";
+							recStus = 3;
+							if (!(fieldErrorDescBulk.equalsIgnoreCase("") || fieldErrorDescBulk.equalsIgnoreCase("OK"))) { merchantErrorList.add(fieldErrorDescBulk); }
+						}
+						appId = null; condValidType1 = null; authToken = null; condValidType2 = null;
+					}*/
+				}
+			}
+			
+			/*if (!rowErrors.isEmpty()) {
+				merchantErrorList.add(rowErrors.toString());
+				output = merchantOnboardDAO.insertTempTable(merchantBean, merchantBodyList, merchantBodyList.size(), srcFilePathwithname, filename,
+						userId, instCode, recStus, recordNum, rowErrors.toString().substring(1, rowErrors.toString().length() - 1), bulkLogRefId, bulkAppNmbr);
+			} else {
+				output = merchantOnboardDAO.insertTempTable(merchantBean, merchantBodyList, merchantBodyList.size(), srcFilePathwithname, filename,
+						userId, instCode, recStus, recordNum, fieldErrorDescBulk, bulkLogRefId, bulkAppNmbr);
+			}*/
+			
+			try {
+				mercCode = merchantBodyList.get(2).trim() != null || !merchantBodyList.get(2).trim().isEmpty() ? merchantBodyList.get(2).trim() : "";
+				custEmail = merchantBodyList.get(17).trim() != null || !merchantBodyList.get(17).trim().isEmpty() ? merchantBodyList.get(17).trim() : "";
+			    custPan = merchantBodyList.get(18).trim() != null || !merchantBodyList.get(18).trim().isEmpty() ? merchantBodyList.get(18).trim() : "";
+			    if (!mercCode.isEmpty() && !custEmail.isEmpty() && !custPan.isEmpty()) {
+			        dupCount = merchantOnboardDAO.getDuplicateCount(mercCode, custEmail, custPan);
+			        hasRowErrors = (rowErrors != null && !rowErrors.isEmpty());
+
+			        if (dupCount == 0) {
+			        	recStusToInsert = hasRowErrors ? recStus : 0; // if not duplicate recstus = 3 (for Error) if no errors then recstus = 0
+			            errorDesc = hasRowErrors ? rowErrors.toString().substring(1, rowErrors.toString().length() - 1) : fieldErrorDescBulk;
+
+			            if (hasRowErrors) { merchantErrorList.add(rowErrors.toString()); }
+
+			            output = merchantOnboardDAO.insertTempTable(merchantBean, merchantBodyList, merchantBodyList.size(), srcFilePathwithname, filename, 
+			            		userId, instCode, recStusToInsert, recordNum, errorDesc, bulkLogRefId, bulkAppNmbr);
+			        } else {
+			        	recStusToInsert = 6;
+				        String duplicateMsg = "Duplicate record is present for Application No. " + bulkAppNmbr;
+				        if (hasRowErrors) {
+				            errorDesc = duplicateMsg + " | " + rowErrors.toString().substring(1, rowErrors.toString().length() - 1);
+				            merchantErrorList.add(rowErrors.toString());
+				        } else {
+				            errorDesc = duplicateMsg;
+				        }
+						output = merchantOnboardDAO.insertTempTable(merchantBean, merchantBodyList, merchantBodyList.size(), srcFilePathwithname, filename, 
+								userId, instCode, recStusToInsert, recordNum, errorDesc, bulkLogRefId, bulkAppNmbr);
+			        }
+			    } else {
+			    	recStusToInsert = 3;
+			    	hasRowErrors = (rowErrors != null && !rowErrors.isEmpty());
+			    	errorDesc = hasRowErrors ? rowErrors.toString().substring(1, rowErrors.toString().length() - 1) : fieldErrorDescBulk;
+			    	output = merchantOnboardDAO.insertTempTable(merchantBean, merchantBodyList, merchantBodyList.size(), srcFilePathwithname, filename, 
+		            		userId, instCode, recStusToInsert, recordNum, errorDesc , bulkLogRefId, bulkAppNmbr);
+			    }
+			} catch (Exception e) {
+			    loggerUtil.error("Error during duplicate record check: ", e);
+			}
+			
+			merchantBodyList.clear();
+			rowErrors.clear();
+		} catch (Exception e) {
+			merchantOnboardDAO.updateBulkUpldLogDetails(bulkLogRefId, "Failure - "+e.getMessage(), 2);
+			loggerUtil.error("Error while inserting into temp table : ", e);
+		}
+		finally {
+			fieldErrorDescBulk = null; rowErrors = null; bulkLogRefId = null; isMandatoryFlag = null; validationType = null; fieldDesc = null; 
+			condValidType = null; possibleValues = null; tokenval = null; mercCode = null; custEmail = null; custPan = null; errorDesc = null;
+		}
+		return output;
+	}
