@@ -1,0 +1,135 @@
+SchedulerListener(existing)
+public class SchedulerListener implements ServletContextListener {
+
+    @Override
+    public void contextInitialized(ServletContextEvent sce) {
+        ConsentApprovalScheduler.start();
+    }
+}
+
+ConsentApprovalScheduler.java
+
+public class ConsentApprovalScheduler {
+
+    public static void start() {
+        try {
+            Scheduler scheduler =
+                StdSchedulerFactory.getDefaultScheduler();
+
+            scheduler.start();
+
+            JobDetail job = JobBuilder
+                .newJob(ConsentExpiryJob.class)
+                .withIdentity("CONSENT_EXPIRY_JOB")
+                .build();
+
+            Trigger trigger = TriggerBuilder
+                .newTrigger()
+                .withSchedule(
+                    CronScheduleBuilder.cronSchedule("0 0 */6 * * ?")
+                )
+                .build();
+
+            scheduler.scheduleJob(job, trigger);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+ConsentExpiryJob.java
+public class ConsentExpiryJob implements Job {
+
+    @Override
+    public void execute(JobExecutionContext context) {
+
+        ConsentService service =
+            (ConsentService) SpringContextUtil
+                .getBean("consentService");
+
+        service.expireOldConsents();
+    }
+}
+
+public void expireOldConsents() {
+    consentDAO.expirePendingConsents();
+}
+public void expirePendingConsents() {
+
+    String sql =
+      "UPDATE CONSENT_TRACKING " +
+      "SET consent_status='E', expired_date=SYSDATE " +
+      "WHERE consent_status='P' " +
+      "AND created_date < SYSDATE - 2";
+
+    jdbcTemplate.update(sql);
+}
+
+Service logic:
+String sourceType = merchantBodyList.get(SOURCE_TYPE_COL_INDEX);
+
+if ("IB".equalsIgnoreCase(sourceType) && recStusToInsert == 0) {
+
+    String token = generateConsentToken();
+	
+	public static String generateConsentToken() {
+    return UUID.randomUUID().toString().replace("-", "");
+}
+
+
+    // 1️⃣ Insert consent record
+    consentDAO.insertConsentRecord(
+        bulkAppNmbr,
+        mercCode,
+        custEmail,
+        token,
+        userId
+    );
+
+    // 2️⃣ Send consent mail
+    sendConsentMail(
+        custEmail,
+        merchantBodyList.get(4), // merchant name
+        String.valueOf(bulkAppNmbr),
+        token,
+        sessionBean
+    );
+}
+
+
+
+
+JSP:
+<table class="table table-bordered">
+    <tr>
+        <th>Application No</th>
+        <th>Merchant Email</th>
+        <th>Consent Status</th>
+    </tr>
+
+    <c:forEach items="${consentList}" var="c">
+        <tr>
+            <td>${c.appNo}</td>
+            <td>${c.email}</td>
+            <td>
+                <c:choose>
+                    <c:when test="${c.status == 'P'}">
+                        <span style="color:orange;">Pending</span>
+                    </c:when>
+                    <c:when test="${c.status == 'A'}">
+                        <span style="color:green;">Approved</span>
+                    </c:when>
+                    <c:when test="${c.status == 'R'}">
+                        <span style="color:red;">Rejected</span>
+                    </c:when>
+                    <c:when test="${c.status == 'E'}">
+                        <span style="color:gray;">Expired</span>
+                    </c:when>
+                </c:choose>
+            </td>
+        </tr>
+    </c:forEach>
+</table>
+
+
+
