@@ -1,0 +1,34 @@
+existing email logic in our build for URL link:
+
+final String url = ServletActionContext.getRequest().getRequestURL().substring(0,
+						(ServletActionContext.getRequest().getRequestURL()).lastIndexOf("/"));
+
+instShortName = ServletActionContext.getRequest().getRequestURI().replaceAll(request.getContextPath().trim(), "").replaceAll("/", "").substring(0, 3);
+
+param.put("user", dUserID);
+param.put("url", url + "/" + instShortName + "forgetPassword.action?uid=");
+							
+							loggerUtil.info("ForgetPasswordService url" + param.get("url"));
+							
+							emailBean.setTo(emailID);
+							emailBean.setVelocityTemplateName("ForgetPasswordEmailTemplate.html");
+							emailBean.setBodyVariables(param);
+							
+							emailService.sendEmail(emailBean);
+							
+							
+-------------------------------------------------------------------------------------------------------------------------------
+
+We want to expect to design code level:
+
+sent EMail --> click link of COnsent link ---> redirect to particular page ---> there click yes / NO
+
+yes - approve
+no - reject   
+
+then shows success message in page
+
+How to make design ?
+
+ 					
+
