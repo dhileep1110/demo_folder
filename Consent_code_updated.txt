@@ -1,0 +1,132 @@
+<action name="consentApproval"
+        class="com.yourapp.consent.action.ConsentApprovalAction">
+    <result name="success">/consent/consentResponse.jsp</result>
+    <result name="error">/consent/consentResponse.jsp</result>
+</action>
+
+-------------------------------------------------------------------------------------
+
+package com.yourapp.consent.action;
+
+import com.opensymphony.xwork2.ActionSupport;
+import com.yourapp.consent.service.ConsentService;
+
+public class ConsentApprovalAction extends ActionSupport {
+
+    private String token;
+    private String decision;   // APPROVED / REJECTED
+    private String message;
+
+    private ConsentService consentService = new ConsentService();
+
+    @Override
+    public String execute() {
+
+        try {
+            if (token == null || token.isEmpty()) {
+                message = "Invalid or expired consent link.";
+                return ERROR;
+            }
+
+            boolean result =
+                consentService.processConsentDecision(token, decision);
+
+            if (result) {
+                message = "Your response has been recorded successfully.";
+                return SUCCESS;
+            } else {
+                message = "Consent already processed or invalid.";
+                return ERROR;
+            }
+
+        } catch (Exception e) {
+            message = "Technical error occurred. Please try later.";
+            return ERROR;
+        }
+    }
+
+    /* Getters & Setters */
+    public void setToken(String token) { this.token = token; }
+    public void setDecision(String decision) { this.decision = decision; }
+    public String getMessage() { return message; }
+}
+------------------------------------------------------------------------------------------
+
+package com.yourapp.consent.service;
+
+import com.yourapp.consent.dao.ConsentDAO;
+
+public class ConsentService {
+
+    private ConsentDAO consentDAO = new ConsentDAO();
+
+    public boolean processConsentDecision(String token, String decision) {
+
+        // 1️⃣ Validate token
+        if (!consentDAO.isValidPendingToken(token)) {
+            return false;
+        }
+
+        // 2️⃣ Update consent status
+        if ("APPROVED".equalsIgnoreCase(decision)) {
+            consentDAO.updateConsentStatus(token, "APPROVED");
+        } else if ("REJECTED".equalsIgnoreCase(decision)) {
+            consentDAO.updateConsentStatus(token, "REJECTED");
+        } else {
+            return false;
+        }
+
+        return true;
+    }
+}
+-------------------------------------------------------------------------------------------------------
+
+package com.yourapp.consent.dao;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+import com.yourapp.util.DBUtil;
+
+public class ConsentDAO {
+
+    public boolean isValidPendingToken(String token) {
+
+        String sql =
+            "SELECT COUNT(1) FROM IB_CONSENT_TXN " +
+            "WHERE CONSENT_TOKEN = ? AND CONSENT_STATUS = 'PENDING'";
+
+        try (Connection con = DBUtil.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, token);
+            ResultSet rs = ps.executeQuery();
+            return rs.next() && rs.getInt(1) > 0;
+
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public void updateConsentStatus(String token, String status) {
+
+        String sql =
+            "UPDATE IB_CONSENT_TXN SET " +
+            "CONSENT_STATUS = ?, " +
+            "CONSENT_DATE = SYSDATE " +
+            "WHERE CONSENT_TOKEN = ?";
+
+        try (Connection con = DBUtil.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, status);
+            ps.setString(2, token);
+            ps.executeUpdate();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+-------------------------------------
