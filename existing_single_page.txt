@@ -1,0 +1,177 @@
+<%@ page contentType="text/html; charset=UTF-8"%>
+<%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core"%>
+<%@ taglib prefix="s" uri="/struts-tags"%>
+<html>
+
+<head>
+<script type="text/javascript">
+if (window.name == "") {
+		var _date = new Date();
+		window.name = "Default" + _date.getTime();
+	}
+</script>
+<style>
+.brandLogo{
+	width:120px !important;
+	height: auto;
+	padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+}
+</style>
+</head>
+	<body class="inner">
+	    <div class="wrapper">
+	    	<header>
+	        	<div class="row-one">
+	            	<div class="container">
+	            		<div ><img src="${pageContext.request.contextPath}/images/DIB/merchant-logo-big.png" class="brandLogo"></div>
+	                </div>
+	            </div>
+	         </header>
+	         	<div class="body-container">
+	
+<section class="section-bg">
+	<div class="container">
+	<div class="graybox">
+
+
+		<table width="100%" height="70%" cellpadding="0" cellspacing="0">
+			<tr height="10%">
+				<td>
+					<%@ include file="/login/common_resources_update.jsp"%>
+				</td>
+			</tr>
+			<tr height="80%">
+				<td style="vertical-align: middle">
+
+					<div id="form-container" align="center">
+						<s:form action="/validateSecurityAnswere.action" method="POST" novalidate="true"
+							cssClass="#form-container H4">
+							
+							
+							<table align=center id="smallbox" width="35%">
+								<tr>
+									<td>
+										<legend><s:text name="securityquestions.title" /></legend>
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<fieldset id="form-fieldset">
+											<s:if
+												test="actionMessages.size>0 || fieldErrors.size>0 || actionErrors.size>0 ">
+												<div id="messagebox">
+													<s:actionmessage cssClass="actMessage"></s:actionmessage>
+													<s:fielderror cssClass="error"></s:fielderror>
+													<s:actionerror cssClass="error"></s:actionerror>
+												</div>
+											</s:if>
+										</fieldset>
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										&nbsp;
+									</td>
+								</tr>
+
+
+								<c:if test="${passwordBean.firstQuestion != null}">
+									<tr>
+										<td><label class="formtext">
+											<s:text
+												name="%{getText('securityquestions.firstsecurityquestion')}"></s:text></label>
+
+										</td>
+										<td>
+
+											<s:select
+												label="%{getText('securityquestions.firstsecurityquestion')}"
+												list="passwordBean.firstQuestion"
+												name="passwordBean.firstQuestion" cssClass="select_styled"></s:select>
+
+										</td>
+									</tr>
+									<tr>
+										<td><label class="formtext">
+											<s:text
+												name="%{getText('securityquestions.firstsecurityanswer')}"></s:text></label>
+											<SPAN class="star"><s:text
+													name="%{getText('maps.mandatory.symbol')}" /> </SPAN>
+										</td>
+										<td>
+											<s:textfield cssClass="formtextbox"
+												label="%{getText('securityquestions.firstsecurityanswer')}"
+												required="true" name='passwordBean.firstSecurityAnswere'
+												maxlength="40" onPaste="return false" value="" AUTOCOMPLETE="OFF"/>
+										</td>
+
+									</tr>
+
+									<tr>
+										<td><label class="formtext">
+											<s:text
+												name="%{getText('securityquestions.secondsecurityquestion')}"></s:text></label>
+
+										</td>
+										<td>
+											<s:select
+												label="%{getText('securityquestions.secondsecurityquestion')}"
+												list="passwordBean.secondQuestion"
+												name="passwordBean.secondQuestion" cssClass="select_styled"></s:select>
+										</td>
+									</tr>
+									<tr>
+										<td><label class="formtext">
+											<s:text
+												name="%{getText('securityquestions.secondsecurityanswer')}"></s:text></label>
+											<SPAN class="star"><s:text
+													name="%{getText('maps.mandatory.symbol')}" /> </SPAN>
+										</td>
+										<td>
+											<s:textfield cssClass="formtextbox"
+												label="%{getText('securityquestions.secondsecurityanswer')}"
+												required="true" name='passwordBean.secondSecurityAnswere'
+												maxlength="40" onPaste="return false" value="" AUTOCOMPLETE="OFF" />
+										</td>
+									</tr>
+									<div class="rowSubmit" style="margin-top:15px;" align="center">
+									<table border="0" align="center" cellspacing="3" cellpadding="3">	
+									<tr>
+										<td>
+											<s:submit cssClass="button" onmouseover="SubmitOver(this);"
+												onmouseout="SubmitOut(this)" />
+											&nbsp; &nbsp;
+											<s:reset cssClass="button" onmouseover="SubmitOver(this);" value="%{getText('maps.clear')}" 
+												onmouseout="SubmitOut(this)" />
+										</td>
+									</tr>
+									</table>
+									</div>
+								</c:if>
+
+							</table>
+
+
+						</s:form>
+				<!--  		<center>
+							<s:a href="login.jsp">
+								<s:text name="maps.backtologin" />
+							</s:a>
+						</center>
+						-->
+					</div>
+				</td>
+			</tr>
+		</table>
+</div>
+		</div>
+		</section>
+		
+			
+		<%@ include file="/layout/GenCredits_bootstrap4_updated.jsp"%>
+		</div>
+		</div>
+		</body>
+
+</html>
