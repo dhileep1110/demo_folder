@@ -1,0 +1,28 @@
+Done coding :
+Service :
+ if(ibData.equals("IB") && recStusToInsert == 0) {
+			            	String token = UUID.randomUUID().toString().replace("-", "");
+			            	//insert consent record
+			            	emailServiceDAO.insertConsentRecord(bulkAppNmbr,mercCode,custEmail,token,userId);
+			            	//Send Consent Mail
+			            	sendConsentMail(custEmail,mercName,sessionBean);
+			            }
+						
+						
+						
+Table for consent table (our existing):
+CREATE TABLE IF NOT EXISTS mps_dib_sitsch.mps_email_audt_log
+(
+    mam_unqe_refno character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    mam_req_timestmp timestamp without time zone,
+    mam_reqt_json text COLLATE pg_catalog."default",
+    mam_resp_type character varying(50) COLLATE pg_catalog."default",
+    mam_resp_code character varying(10) COLLATE pg_catalog."default",
+    mam_resp_msge character varying(100) COLLATE pg_catalog."default",
+    mam_resp_desc character varying(100) COLLATE pg_catalog."default",
+    mam_app_resp_code character varying(10) COLLATE pg_catalog."default",
+    mam_resp_json text COLLATE pg_catalog."default",
+    mam_rsnd_mail character varying(5) COLLATE pg_catalog."default",
+    mam_lupd_sydt timestamp without time zone,
+    mam_mail_stus numeric(5,0) NOT NULL
+)
