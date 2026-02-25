@@ -1,0 +1,112 @@
+public void contextInitialized(ServletContextEvent servletContextEvent)
+	{
+		try
+		{
+		    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+				System.setProperty("config.propertiesFile.name", servletContextEvent.getServletContext().getInitParameter("COMMON-MODULE-CONFIGFILE-WINLOCATION"));
+			}else{
+				System.setProperty("config.propertiesFile.name",servletContextEvent.getServletContext().getInitParameter("COMMON-MODULE-CONFIGFILE-LOCATION"));
+			}
+			 EmailSchedule.genEmailSchedule();
+			TransactionEmailNotificationSchedule.getEmailNotificationSchedule();
+			//MasterCardSettlementSchedule.genMasterCardSchedule();
+			//VisaSettlementSchedule.genVisaSchedule();
+			
+		}
+		catch (Exception e) 
+		{
+//		e.printStackTrace();
+			loggerUtil.error("Exception:"+e.toString());
+		}
+		finally
+		{
+						
+		}
+	}
+	
+---------------------------------------------------------------------------------------------------------------------------------------------------------
+
+public static boolean getEmailNotificationSchedule() throws Exception {
+		LoggerUtil LOG = new LoggerUtil(TransactionEmailNotificationSchedule.class);
+
+		try
+		{
+			LOG.info("getEmailNotificationSchedule End ");
+			Trigger trigger=null;
+	    	JobDetail job=null;
+	    	StringBuffer buffer = new StringBuffer();
+	    	scheduler = new StdSchedulerFactory().getScheduler();
+	    	scheduler.start();
+
+			List<TransactionEmailNotificationScheduleBean> schedulerList = getSchedularDetails();
+//			System.out.println(schedulerList.size());
+			int triggerTimeInterval = getTriggerTimeInterval();
+			
+			if (schedulerList != null && schedulerList.size() > 0) {
+				Iterator<TransactionEmailNotificationScheduleBean> iterator = schedulerList.iterator();
+				while (iterator.hasNext()) {
+					TransactionEmailNotificationScheduleBean scheduleBean = iterator.next();
+					try {
+						
+						
+						if(scheduleBean.getStatus().equals("1")){
+//							System.out.println(scheduleBean.getSchedularName());
+							
+							int startTime = Integer.parseInt(scheduleBean.getStartTime());
+							int endTime = Integer.parseInt(scheduleBean.getEndTime())-1;
+							
+							buffer.append("0");
+							buffer.append(" ");
+							buffer.append("*/"+triggerTimeInterval);
+							buffer.append(" ");
+							
+							buffer.append(startTime);
+							buffer.append("-");
+							buffer.append(endTime);
+							
+							buffer.append(" ");
+							buffer.append("*");
+							buffer.append(" ");
+							buffer.append("*");
+							buffer.append(" ");
+							buffer.append("?");
+//							System.out.println("Expression : "+buffer.toString());
+						
+							if(scheduleBean.getJobName().equals("1")){
+								
+								job = JobBuilder.newJob(ExecutePGEmailService.class).withIdentity(scheduleBean.getSchedularName()).usingJobData("InstId", scheduleBean.getInstId()).usingJobData("DeclineTime", scheduleBean.getDeclineTime()).build();	  
+								   
+							}else{
+								
+								job = JobBuilder.newJob(ExecutePOSEmailService.class).withIdentity(scheduleBean.getSchedularName()).usingJobData("InstId", scheduleBean.getInstId()).usingJobData("DeclineTime", scheduleBean.getDeclineTime()).build();	  
+							}
+							
+						       trigger = TriggerBuilder.newTrigger().withSchedule(CronScheduleBuilder.cronSchedule(buffer.toString())).withIdentity(scheduleBean.getSchedularName()).build();
+							   scheduler.scheduleJob(job, trigger);
+							   
+							   buffer.delete(0, buffer.length());
+							
+						}
+						
+						
+						
+						LOG.info("getEmailNotificationSchedule() End ");
+					} catch (Exception e) {
+						LOG.error("Error in getEmailNotificationSchedule() ", e);
+						
+					}
+
+				}
+			}
+			
+		}
+		
+	    catch (Exception e) {
+	    	e.printStackTrace();
+	    	LOG.error("Failed to start getEmailNotificationSchedule ",e);
+		   return false;	
+		}
+	   
+		LOG.info("Inside getEmailNotificationSchedule() end ");
+      return true;
+	}
