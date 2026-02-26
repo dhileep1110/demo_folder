@@ -1,0 +1,66 @@
+<table class="table table-bordered">
+    <tr>
+        <th>Merchant ID</th>
+        <th>Email</th>
+        <th>Status</th>
+        <th>Expiry Date</th>
+        <th>Action</th>
+    </tr>
+
+    <c:forEach var="row" items="${consentList}">
+        <tr>
+            <td>${row.merchantId}</td>
+            <td>${row.email}</td>
+
+            <td>
+                <c:choose>
+                    <c:when test="${row.status == 'PENDING'}">
+                        <span style="color:orange;">Pending</span>
+                    </c:when>
+                    <c:when test="${row.status == 'APPROVED'}">
+                        <span style="color:green;">Approved</span>
+                    </c:when>
+                    <c:otherwise>
+                        <span style="color:red;">Rejected / Expired</span>
+                    </c:otherwise>
+                </c:choose>
+            </td>
+
+            <td>
+                <c:if test="${row.status == 'PENDING'}">
+                    ${row.expiryDate}
+                </c:if>
+                <c:if test="${row.status != 'PENDING'}">
+                    -
+                </c:if>
+            </td>
+
+            <td>
+                <c:if test="${row.status == 'EXPIRED'}">
+                    <form action="resendConsent.action" method="post">
+                        <input type="hidden" name="consentId"
+                               value="${row.consentId}" />
+                        <input type="submit" value="Resend"
+                               class="btn btn-sm btn-primary"/>
+                    </form>
+                </c:if>
+                <c:if test="${row.status != 'EXPIRED'}">
+                    -
+                </c:if>
+            </td>
+
+        </tr>
+    </c:forEach>
+</table>
+
+
+public String resendConsent() {
+
+    String newToken = generateToken();
+
+    consentDAO.resendConsent(consentId, expiryDays, newToken);
+
+    consentMailService.sendConsentMail(newToken);
+
+    return SUCCESS;
+}
