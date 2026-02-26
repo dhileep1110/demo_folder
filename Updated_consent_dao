@@ -1,0 +1,179 @@
+package com.yourapp.consent.dao;
+
+import java.sql.*;
+import java.util.*;
+import javax.sql.DataSource;
+
+public class ConsentDAOImpl {
+
+    private DataSource dataSource;
+
+    public ConsentDAOImpl(DataSource ds) {
+        this.dataSource = ds;
+    }
+
+    /* ===============================
+       INSERT – INITIAL CONSENT
+       Expiry = 2 Days
+    ================================ */
+    public void insertConsent(String merchantId,
+                              String email,
+                              String token,
+                              String createdBy) throws Exception {
+
+        String sql = "INSERT INTO CONSENT_IB_DTL ("
+                + "CONSENT_ID, MERCHANT_ID, EMAIL_ID, SOURCE_TYPE, "
+                + "CONSENT_STATUS, MAIL_SENT_DATE, EXPIRY_DATE, "
+                + "CONSENT_TOKEN, RESEND_COUNT, CREATED_BY, CREATED_DATE)"
+                + " VALUES (CONSENT_SEQ.NEXTVAL, ?, ?, 'IB', "
+                + "'PENDING', SYSDATE, SYSDATE + 2, ?, 0, ?, SYSDATE)";
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, merchantId);
+            ps.setString(2, email);
+            ps.setString(3, token);
+            ps.setString(4, createdBy);
+
+            ps.executeUpdate();
+        }
+    }
+
+    /* ===============================
+       APPROVE (YES CLICK)
+    ================================ */
+    public int approveConsent(String token) throws Exception {
+
+        String sql = "UPDATE CONSENT_IB_DTL "
+                + "SET CONSENT_STATUS='APPROVED', "
+                + "ACTION_DATE=SYSDATE, UPDATED_DATE=SYSDATE "
+                + "WHERE CONSENT_TOKEN=? "
+                + "AND CONSENT_STATUS='PENDING' "
+                + "AND EXPIRY_DATE >= SYSDATE";
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, token);
+            return ps.executeUpdate();
+        }
+    }
+
+    /* ===============================
+       REJECT (NO CLICK)
+    ================================ */
+    public int rejectConsent(String token) throws Exception {
+
+        String sql = "UPDATE CONSENT_IB_DTL "
+                + "SET CONSENT_STATUS='EXPIRED', "
+                + "ACTION_DATE=SYSDATE, UPDATED_DATE=SYSDATE "
+                + "WHERE CONSENT_TOKEN=? "
+                + "AND CONSENT_STATUS='PENDING'";
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, token);
+            return ps.executeUpdate();
+        }
+    }
+
+    /* ===============================
+       AUTO EXPIRE (Scheduler)
+       Runs every 10 minutes
+    ================================ */
+    public int expirePendingConsents() throws Exception {
+
+        String sql = "UPDATE CONSENT_IB_DTL "
+                + "SET CONSENT_STATUS='EXPIRED', "
+                + "UPDATED_DATE=SYSDATE "
+                + "WHERE CONSENT_STATUS='PENDING' "
+                + "AND EXPIRY_DATE < SYSDATE";
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            return ps.executeUpdate();
+        }
+    }
+
+    /* ===============================
+       RESEND CONSENT (DO Action)
+       Expiry reset to 2 days
+    ================================ */
+    public int resendConsent(long consentId, String newToken) throws Exception {
+
+        String sql = "UPDATE CONSENT_IB_DTL "
+                + "SET CONSENT_STATUS='PENDING', "
+                + "MAIL_SENT_DATE=SYSDATE, "
+                + "EXPIRY_DATE=SYSDATE + 2, "
+                + "CONSENT_TOKEN=?, "
+                + "RESEND_COUNT=NVL(RESEND_COUNT,0)+1, "
+                + "UPDATED_DATE=SYSDATE "
+                + "WHERE CONSENT_ID=?";
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, newToken);
+            ps.setLong(2, consentId);
+
+            return ps.executeUpdate();
+        }
+    }
+
+    /* ===============================
+       FETCH CONSENT LIST (UI Table)
+    ================================ */
+    public List<ConsentBean> getConsentList() throws Exception {
+
+        List<ConsentBean> list = new ArrayList<>();
+
+        String sql = "SELECT CONSENT_ID, MERCHANT_ID, EMAIL_ID, "
+                + "CONSENT_STATUS, "
+                + "TO_CHAR(EXPIRY_DATE,'DD-MON-YYYY HH24:MI') EXPIRY_DATE "
+                + "FROM CONSENT_IB_DTL "
+                + "ORDER BY MAIL_SENT_DATE DESC";
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+
+                ConsentBean bean = new ConsentBean();
+                bean.setConsentId(rs.getLong("CONSENT_ID"));
+                bean.setMerchantId(rs.getString("MERCHANT_ID"));
+                bean.setEmail(rs.getString("EMAIL_ID"));
+                bean.setStatus(rs.getString("CONSENT_STATUS"));
+                bean.setExpiryDate(rs.getString("EXPIRY_DATE"));
+
+                list.add(bean);
+            }
+        }
+
+        return list;
+    }
+
+    /* ===============================
+       TOKEN VALIDATION
+    ================================ */
+    public boolean isValidToken(String token) throws Exception {
+
+        String sql = "SELECT 1 FROM CONSENT_IB_DTL "
+                + "WHERE CONSENT_TOKEN=? "
+                + "AND CONSENT_STATUS='PENDING' "
+                + "AND EXPIRY_DATE >= SYSDATE";
+
+        try (Connection con = dataSource.getConnection();
+             PreparedStatement ps = con.prepareStatement(sql)) {
+
+            ps.setString(1, token);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
+    }
+}
