@@ -1,0 +1,37 @@
+public class ConsentExpirySchedule {
+
+    private static Scheduler scheduler;
+
+    public static void startConsentSchedule() throws Exception {
+
+        scheduler = new StdSchedulerFactory().getScheduler();
+        scheduler.start();
+
+        JobDetail job = JobBuilder.newJob(ConsentExpiryJob.class)
+                .withIdentity("ConsentExpiryJob")
+                .build();
+
+        // Run every 1 hour (adjust if needed)
+        Trigger trigger = TriggerBuilder.newTrigger()
+                .withSchedule(CronScheduleBuilder.cronSchedule("0 0 0/1 * * ?"))
+                .withIdentity("ConsentExpiryTrigger")
+                .build();
+
+        scheduler.scheduleJob(job, trigger);
+    }
+}
+--------------
+public class ConsentExpiryJob implements Job {
+
+    @Override
+    public void execute(JobExecutionContext context) {
+
+        try {
+            ConsentDAO dao = new ConsentDAOImpl();
+            int updated = dao.expirePendingConsents();
+            System.out.println("Expired consent count : " + updated);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
