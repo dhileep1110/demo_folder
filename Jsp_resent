@@ -64,3 +64,25 @@ public String resendConsent() {
 
     return SUCCESS;
 }
+
+public void sendConsentMail(String mercEmail, String mercCode,String mercName, String token, SessionBean sessionBean) {
+		try
+		{	
+			String baseurl = ServletActionContext.getRequest().getRequestURL().substring(0,
+					(ServletActionContext.getRequest().getRequestURL()).lastIndexOf("/"));
+			EmailBean emailBean = new EmailBean();
+			emailBean.setPriority("1");
+			emailBean.setTo(mercEmail);
+			emailBean.setSubject("Consent Required – Merchant Onboarding Request");
+			emailBean.setVelocityTemplateName("consentAggrementEmail.html");
+			
+			Map<String, Object> bodyMap = new HashMap<String, Object>();
+			bodyMap.put("mer_name", mercName);	
+			bodyMap.put("instName", sessionBean.getInstName());
+			bodyMap.put("Consent_Link", baseurl + "/" + "consentProcess.action?" +token+"&mercCode="+mercCode);
+			emailBean.setBodyVariables(bodyMap);
+			emailService.sendEmail(emailBean);
+		}catch (Exception e) {
+			loggerUtil.error("Error while sending merchant Confirmation mail to maker", e);
+		}
+	}
