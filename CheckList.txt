@@ -29,10 +29,9 @@
   public void sendConsentMail(String mercEmail, String mercCode,String mercName, String token, SessionBean sessionBean) {
 		try
 		{	
+			String contextPath =  ServletActionContext.getRequest().getContextPath();
 			String baseurl = ServletActionContext.getRequest().getRequestURL().substring(0,
-					(ServletActionContext.getRequest().getRequestURL()).lastIndexOf("/"));
-			String instShortName = ServletActionContext.getRequest().getRequestURI().replaceAll
-					(ServletActionContext.getRequest().getContextPath().trim(), "").replaceAll("/", "").substring(0, 3);
+					(ServletActionContext.getRequest().getRequestURL()).indexOf(contextPath))+contextPath;
 			EmailBean emailBean = new EmailBean();
 			emailBean.setPriority("1");
 			emailBean.setTo(mercEmail);
@@ -42,7 +41,7 @@
 			Map<String, Object> bodyMap = new HashMap<String, Object>();
 			bodyMap.put("mer_name", mercName);	
 			bodyMap.put("instName", sessionBean.getInstName());
-			bodyMap.put("Consent_Link", baseurl + "/" + instShortName + "consentProcess.action?" +token+"&mercCode="+mercCode);
+			bodyMap.put("Consent_Link", baseurl + "/" + "consentProcess.action?" +token+"&mercCode="+mercCode);
 			emailBean.setBodyVariables(bodyMap);
 			emailService.sendEmail(emailBean);
 		}catch (Exception e) {
@@ -55,18 +54,28 @@
 	package com.fss.maps.common.action;
 
 import com.fss.maps.common.dao.EmailServiceDAO;
+import com.fss.maps.common.util.logger.LoggerUtil;
+import com.fss.maps.login.action.ForgetPasswordAction;
 import com.opensymphony.xwork2.ActionSupport;
 
 public class ConsentPageAction extends ActionSupport {
 	
 	private String token;
+	private String decision;
 	private EmailServiceDAO emailServiceDao;
+	private LoggerUtil loggerUtil = new LoggerUtil(ForgetPasswordAction.class);
 	
 	public String getToken() {
 		return token;
 	}
 	public void setToken(String token) {
 		this.token = token;
+	}
+	public String getDecision() {
+		return decision;
+	}
+	public void setDecision(String decision) {
+		this.decision = decision;
 	}
 	public EmailServiceDAO getEmailServiceDao() {
 		return emailServiceDao;
@@ -75,13 +84,66 @@ public class ConsentPageAction extends ActionSupport {
 		this.emailServiceDao = emailServiceDao;
 	}
 	
-	public String approveConsent() {
-		//need to code 
-		return null;
+	public String showLandingpage() {
+		  loggerUtil.info("Landing into Merchant Consent page");
+		  //validate token
+		  try {
+			if (!emailServiceDao.isValidPendingToken(token)) {
+				  	addActionError("Consent link is expired or invalid");
+				  	loggerUtil.error("Error in token validation");
+			        return ERROR;
+			    }
+		} catch (Exception e) {
+			loggerUtil.error("Error while consent landing page",e);
+			addActionError("Error while consent landing page");
+		}  
+		return SUCCESS;
 	}
 	
-	public String rejectConsent() {
-		//need to code
-		return null;
+	
+	public String consentApproval() {
+		loggerUtil.info("User Consent action started");
+		try {
+		//validate token
+		  if (!emailServiceDao.isValidPendingToken(token)) {
+			   addActionError("Consent link is expired or invalid");
+	      return ERROR;
+	         }
+		  if ("APPROVED".equalsIgnoreCase(decision)) {
+			   emailServiceDao.updateConsentStatus(token, "APPROVED");
+	         } else if ("REJECTED".equalsIgnoreCase(decision)) {
+	           emailServiceDao.updateConsentStatus(token, "REJECTED");
+	         }
+		  }catch(Exception e) {
+			loggerUtil.error("Error while processing consent actions",e);
+			addActionError("Error while processing consent actions");
+		  }
+		return SUCCESS;
 	}
+	
 }
+
+
+Xml: name - maps-login.xml(existing xml file)
+<struts>
+
+
+	<package name="login" namespace="/" extends="maps-default">
+//others tags
+<!-- Consent Mail -->
+		<action name="consentProcess" class="com.fss.maps.common.action.ConsentPageAction" method="showLandingpage">
+				<interceptor-ref name="basicStack" />
+			    <result name="success">/others/ConsentLanding.jsp</result>
+			    <result name="error">/others/ConsentLanding.jsp</result>
+		</action>
+		
+		<action name="consentApproval" class="com.fss.maps.common.action.ConsentPageAction" method="consentApproval">
+			    <interceptor-ref name="basicStack" />
+			    <result name="success">/others/ConsentResponse.jsp</result>
+			    <result name="error">/others/ConsentResponse.jsp</result>
+		</action>
+		
+	</package>
+</struts>
+
+
