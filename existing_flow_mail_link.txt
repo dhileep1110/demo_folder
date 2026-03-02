@@ -30,5 +30,90 @@ then shows success message in page
 
 How to make design ?
 
- 					
+---------------------------------------------------------------------------------------------------------------------------
+package com.fss.maps.common.action;
+
+import com.fss.maps.common.dao.EmailServiceDAO;
+import com.fss.maps.common.util.logger.LoggerUtil;
+import com.fss.maps.login.action.ForgetPasswordAction;
+import com.opensymphony.xwork2.ActionSupport;
+
+public class ConsentPageAction extends ActionSupport {
+	
+	private String token;
+	private String decision;
+	private EmailServiceDAO emailServiceDao;
+	private LoggerUtil loggerUtil = new LoggerUtil(ForgetPasswordAction.class);
+	
+	public String getToken() {
+		return token;
+	}
+	public void setToken(String token) {
+		this.token = token;
+	}
+	public String getDecision() {
+		return decision;
+	}
+	public void setDecision(String decision) {
+		this.decision = decision;
+	}
+	public EmailServiceDAO getEmailServiceDao() {
+		return emailServiceDao;
+	}
+	public void setEmailServiceDao(EmailServiceDAO emailServiceDao) {
+		this.emailServiceDao = emailServiceDao;
+	}
+	
+	public String showLandingpage() {
+		  loggerUtil.info("Landing into Merchant Consent page");
+		  //validate token
+		  try {
+			if (!emailServiceDao.isValidPendingToken(token)) {
+				  	addActionError("Consent link is expired or invalid");
+				  	loggerUtil.error("Error in token validation");
+			        return ERROR;
+			    }
+		} catch (Exception e) {
+			loggerUtil.error("Error while consent landing page",e);
+			addActionError("Error while consent landing page");
+		}  
+		return SUCCESS;
+	}
+	
+	
+	public String consentApproval() {
+		loggerUtil.info("User Consent action started");
+		try {
+		//validate token
+		  if (!emailServiceDao.isValidPendingToken(token)) {
+			   addActionError("Consent link is expired or invalid");
+	      return ERROR;
+	         }
+		  if ("APPROVED".equalsIgnoreCase(decision)) {
+			   emailServiceDao.updateConsentStatus(token, "APPROVED");
+	         } else if ("REJECTED".equalsIgnoreCase(decision)) {
+	           emailServiceDao.updateConsentStatus(token, "REJECTED");
+	         }
+		  }catch(Exception e) {
+			loggerUtil.error("Error while processing consent actions",e);
+			addActionError("Error while processing consent actions");
+		  }
+		return SUCCESS;
+	}
+	
+}
+
+<!-- Consent Mail -->
+		<action name="consentProcess" class="com.fss.maps.common.action.ConsentPageAction" method="showLandingpage">
+				<interceptor-ref name="basicStack" />
+			    <result name="success">/others/ConsentLanding.jsp</result>
+			    <result name="error">/others/ConsentLanding.jsp</result>
+		</action>
+		
+		<action name="consentApproval" class="com.fss.maps.common.action.ConsentPageAction" method="consentApproval">
+			    <interceptor-ref name="basicStack" />
+			    <result name="success">/others/ConsentResponse.jsp</result>
+			    <result name="error">/others/ConsentResponse.jsp</result>
+		</action>
+
 
