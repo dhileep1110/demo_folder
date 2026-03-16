@@ -1,0 +1,288 @@
+public String sendMerchantDetailsAndSaveResponse() throws AanipayException {
+		// set merchant list based on status
+		setMerchantDetailsList(merchantOnboardAanipayService
+				.getaaniPayMerchantDetails(aaniPayMerchantDetailsBean.getSelectMerchantAanipayApi(), sessionBean));
+
+		try {
+
+			if ("enrollment".equals(aaniPayMerchantDetailsBean.getRegisterValue())) {
+
+				return enrollmentMerchant();
+
+			} else if ("Diregister".equals(aaniPayMerchantDetailsBean.getDeregisterValue().trim())) {
+				return deRegisterMerchant();
+			} else {
+				addActionError("Error in aanipay: Invalid value for Register or Deregister.");
+				return ERROR;
+			}
+		} catch (IOException e) {
+			log.error("Error while writing JSON data to file", e);
+			throw new AanipayException("Error while writing JSON data to file", e);
+		} catch (Exception e) {
+			log.error("An error occurred while processing the merchant details.", e);
+			throw new AanipayException("An error occurred while processing the merchant details.", e);
+		}
+	}
+	
+	
+---------------------------------------------------
+
+private String enrollmentMerchant() throws JsonMappingException, JsonProcessingException {
+		log.info("Merchant enrollment Started ");
+		String validationMessage = merchantOnboardAanipayService
+				.validateMerchantEnrollmentBeforeJsonRequest(aaniPayMerchantDetailsBean.getMerchantId());
+		if (validationMessage != null) {
+			addActionError(validationMessage);
+			return ERROR;
+		}
+
+		// Fetch merchant details to enroll
+		List<MerchantDetailsAaniPayBean> merchantDetailsListforJson = merchantOnboardAanipayService
+				.getMerchantDetails(false, false, aaniPayMerchantDetailsBean.getMerchantId());
+
+		if (merchantDetailsListforJson == null || merchantDetailsListforJson.isEmpty()) {
+			log.error("No merchant details available to process."
+					+ new AanipayException("merchantDetailsListforJson is Empty"));
+			addActionError(
+					"No record found for enrollment with Merchant ID: " + aaniPayMerchantDetailsBean.getMerchantId());
+			return ERROR;
+		}
+
+		// Convert merchant details to JSON
+		AanipayJsonConverter jsonConverter = new AanipayJsonConverter();
+		String resultJsonData = jsonConverter.acquireEnrollmentMerchantJsonData(merchantDetailsListforJson.get(0));
+
+		String url = this.getMpsConstantsInstance().getPropValue("MERC_AANIPAY_URL");
+
+		String response = null;
+		// restemplate logic to send the json data to url with same account start
+		response = makeRestApiCall(url, resultJsonData);
+		// restemplate logic to send the json data to url with same account end
+
+		if (response.startsWith("ERROR")) {
+			String errorMessage = response.replaceFirst("^ERROR: ", "");
+			addActionError(errorMessage);
+			return ERROR;
+		}
+
+		ObjectMapper objectMapper = new ObjectMapper();
+		JsonNode responseJson = objectMapper.readTree(response);
+		String title = responseJson.path("title").asText();
+		String statusString = responseJson.path("status").asText();
+		String aniMercCode = responseJson.path("detail").path("merchant").path("merchantTag").asText(); // merchantTag
+																										// =
+																										// aniMercCode
+		String aaniRemark = responseJson.path("detail").path("result").path("message").asText(); // message =
+																									// aaniRemark
+		String mercCode = responseJson.path("detail").path("merchant").path("merchantId").asText(); // merchantId
+																									// =
+																									// mercCode
+
+		if ("SUCCESS".equalsIgnoreCase(title) && "1000".equals(statusString)) {
+			try {
+				setMerchantDetailsList(merchantOnboardAanipayService.getaaniPayMerchantDetails(
+						aaniPayMerchantDetailsBean.getSelectMerchantAanipayApi(), sessionBean));
+				getTitleOfJspPage();
+
+				if (!aaniPayMerchantDetailsBean.getMerchantId().equals(mercCode)) {
+					String errorMessage = String.format(
+							"Merchant ID mismatch occurred. Expected: %s, Received: %s in method %s.%s", mercCode,
+							aaniPayMerchantDetailsBean.getMerchantId(), this.getClass().getName(), new Object() {
+							}.getClass().getEnclosingMethod().getName());
+					log.error(errorMessage);
+					addActionError("Error Occurred during update: " + errorMessage);
+					return ERROR;
+
+				}
+
+				int result = merchantOnboardAanipayService.updateMercEnrollmentOnJsonRes(aniMercCode, aaniRemark,
+						mercCode);
+
+				if (result > 0) {
+					setMerchantDetailsList(merchantOnboardAanipayService.getaaniPayMerchantDetails(
+							aaniPayMerchantDetailsBean.getSelectMerchantAanipayApi(), sessionBean));
+					addActionMessage("Merchant successfully enrolled!");
+					return SUCCESS;
+
+				}    
+				log.error("Error Occurred during update. Result: "+ result);
+		        addActionError("Error Occurred during update");
+		        return ERROR;
+			} catch (Exception e) {
+				log.error("Error fetching merchant details", e);
+				addActionError(getText("error.merchant.details.error"));
+				return ERROR;
+			}
+
+			
+		} else if ("FAILURE".equalsIgnoreCase(title) && "2000".equals(statusString)) {
+			log.error(" resultJsonData  \n"+resultJsonData);
+			JsonNode errorNode = responseJson.path("error");
+			String errorDescription = errorNode.get(0).path("errorDescription").asText();
+			addActionError(errorDescription);
+			return ERROR;
+
+		} else {
+		    String unexpectedMessage = String.format("Unexpected response received from API. Title: %s, Status: %s, Response: %s",
+		            title, statusString, resultJsonData);
+
+		    log.error(unexpectedMessage);
+		    addActionError("Unexpected response received from API");
+		    return ERROR;
+		}
+
+	}
+
+	private String deRegisterMerchant() {
+
+		log.info("Deregistering...");
+
+		String merchantId = aaniPayMerchantDetailsBean.getMerchantId();
+
+		String validationMessage = merchantOnboardAanipayService.validateAndDeregisterMerchant(merchantId);
+
+		if (validationMessage != null) {
+			addActionError(validationMessage);
+			return ERROR; // Prevent deregistration
+		} else {
+			setMerchantDetailsList(merchantOnboardAanipayService.getaaniPayMerchantDetails(
+					aaniPayMerchantDetailsBean.getSelectMerchantAanipayApi(), sessionBean));
+
+			addActionMessage("Merchant Deregistered Successfully");
+			return SUCCESS;
+		}
+	}
+
+----------------------------------------------------------------------------------------------------
+	public String acquireEnrollmentMerchantJsonData(MerchantDetailsAaniPayBean bean) {
+		try {
+			// Initialize Jackson's ObjectMapper
+			ObjectMapper mapper = new ObjectMapper();
+			mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+
+			// Root object
+			ObjectNode root = mapper.createObjectNode();
+			root.put("X-Request-ID", "b45d94ce-57ca-4e05-b67b-de11e8799fed7");
+			root.put("bankCode", bean.getBankCode());
+			root.put("groupCode", bean.getGroupCode());
+
+			// Merchant object
+			ObjectNode merchant = root.putObject("merchant");
+			merchant.put("merchantId", bean.getMerchantId());
+			merchant.put("merchantLegalName", bean.getMerchantLegalName());
+			merchant.put("vatNumber", bean.getVatNumber());
+			merchant.put("mcc", bean.getMcc());
+			merchant.put("mobile", "+971" + bean.getMobile());
+			merchant.put("name", bean.getName());
+			merchant.put("surname", bean.getSurname());
+
+			// Banks array
+			/*ArrayNode banks = mapper.createArrayNode();
+			ObjectNode bank = mapper.createObjectNode();
+			bank.put("bankCode", bean.getBankCode());
+			bank.put("groupCode", bean.getGroupCode());
+			bank.put("merchantId", bean.getMerchantId());*/
+
+			// Bank Accounts array
+			ArrayNode bankAccounts = mapper.createArrayNode();
+			bankAccounts.add(mapper.createObjectNode().put("IBAN", bean.getmIban()).put("currency", bean.getCurrency()));
+			bankAccounts.add(mapper.createObjectNode().put("IBAN", "AE071234234567890123456") // Example second IBAN
+					.put("currency", bean.getCurrency()));
+			/*bank.set("bankAccounts", bankAccounts);
+
+			banks.add(bank);*/
+			merchant.set("bankAccounts", bankAccounts);
+
+			// Store array
+			ArrayNode storeArray = mapper.createArrayNode();
+			ObjectNode store = mapper.createObjectNode();
+
+			// Terminal IDs
+			ArrayNode terminalIds = mapper.createArrayNode();
+			terminalIds.add(mapper.createObjectNode().put("terminalId", bean.getTerminalId()));
+			store.set("terminalIds", terminalIds);
+			
+			// Store details
+			store.put("storeName", bean.getStoreName());
+			store.put("type", bean.getType());
+			store.put("storeId", bean.getStoreSqId());
+			store.put("mcc", "1234"); // Example MCC for the store
+
+			// Address object
+			ObjectNode address = mapper.createObjectNode();
+			address.put("building", bean.getBuilding());
+			address.put("street", bean.getStreet());
+			address.put("city", bean.getCity());
+			address.put("postalCode", bean.getPostalCode());
+			address.put("county", bean.getCounty());
+			address.put("country", bean.getCountry());
+			store.set("address", address);
+			store.set("bankAccount", mapper.createObjectNode().put("IBAN", "AE071234234567890123456")); // Example IBAN
+
+			// Add store to store array
+			storeArray.add(store);
+			merchant.set("store", storeArray);
+
+			// Convert root object to pretty-printed JSON
+			return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+	
+------------------------------------------------------------------------------------------------------
+
+public String validateAndDeregisterMerchant(String merchantId) {
+	    // SQL query to fetch the merchant details
+	    String validationQuery = "SELECT MMM_ANIP_MERCODE as aanipayid, MMM_AANI_STUS as aani_status " +
+	                             "FROM MPS_MERC_MERH_DETL " +
+	                             "WHERE MMM_MER_CODE = ? " ;
+	                            
+
+	    // SQL query to update the status
+	    String updateQuery = "UPDATE MPS_MERC_MERH_DETL " +
+	                         "SET MMM_AANI_STUS = ? , MMM_MCUR_STUS = ? " + 
+	                         "WHERE MMM_MER_CODE = ? " ;
+	                       
+
+	    try {
+	    	 
+	        // Validate merchant status
+	        Map<String, Object> result = jdbcTemplate.queryForMap(validationQuery, merchantId);
+	        String aanipayid=null;
+	        Integer aaniStatus=null;
+	        Object statusObj = result.get("aani_status");
+	        aanipayid = result.get("aanipayid") != null ? String.valueOf(result.get("aanipayid")) : null;
+
+	        if (statusObj != null) {
+	            aaniStatus = ((Number) statusObj).intValue();  
+	        }
+
+	        // Validation: If both values are null or empty, allow deregistration
+	        if ((aanipayid != null ) &&
+	            (aaniStatus != null)) {
+	            
+	            // Update the status to 0 (deregistered)
+	            jdbcTemplate.update(updateQuery, 2,0,merchantId);
+
+	            // Return null to indicate success
+	            return null;
+	        } else {
+	            return "Cannot deregister merchant. Status or AaniPay ID is active.";
+	        }
+
+	    } catch (EmptyResultDataAccessException e) {
+	    	loggerUtil.error(e);
+	        return "Merchant not found for deregistration.";
+	    } catch (DataAccessException e) {
+	    	loggerUtil.error(e);
+	        return "An error occurred while validating the merchant.";
+	    }catch (Exception e) {
+	    	loggerUtil.error(e);
+	        return "An error occurred while validating the merchant.";
+	    }
+	    
+	}
+
