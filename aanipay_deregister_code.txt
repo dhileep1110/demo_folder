@@ -1,0 +1,192 @@
+AANIPAY DEREGISTER IMPLEMENTATION (BASED ON EXISTING STRUCTURE)
+
+  -----------------------------------------------
+  1. Action Class Method : deRegisterMerchant()
+  -----------------------------------------------
+
+private String deRegisterMerchant() throws JsonProcessingException {
+
+    log.info("Merchant Deregistration Started ");
+
+    String merchantId = aaniPayMerchantDetailsBean.getMerchantId();
+
+    String validationMessage = merchantOnboardAanipayService
+            .validateAndDeregisterMerchant(merchantId);
+
+    if (validationMessage != null) {
+        addActionError(validationMessage);
+        return ERROR;
+    }
+
+    // Fetch merchant details
+    List<MerchantDetailsAaniPayBean> merchantDetailsListforJson =
+            merchantOnboardAanipayService.getMerchantDetails(false, false, merchantId);
+
+    if (merchantDetailsListforJson == null || merchantDetailsListforJson.isEmpty()) {
+
+        log.error("No merchant details available for deregistration");
+        addActionError("No record found for deregister with Merchant ID: " + merchantId);
+        return ERROR;
+    }
+
+    // Convert merchant details to JSON
+    AanipayJsonConverter jsonConverter = new AanipayJsonConverter();
+    String resultJsonData = jsonConverter
+            .acquireDeregisterMerchantJsonData(merchantDetailsListforJson.get(0));
+
+    String url = this.getMpsConstantsInstance().getPropValue("MERC_AANIPAY_URL");
+
+    String response = makeRestApiCall(url, resultJsonData);
+
+    if (response.startsWith("ERROR")) {
+        String errorMessage = response.replaceFirst("^ERROR: ", "");
+        addActionError(errorMessage);
+        return ERROR;
+    }
+
+    ObjectMapper objectMapper = new ObjectMapper();
+    JsonNode responseJson = objectMapper.readTree(response);
+
+    String title = responseJson.path("title").asText();
+    String statusString = responseJson.path("status").asText();
+    String resultMessage = responseJson.path("detail").path("disableMerchant").asText();
+
+    if ("SUCCESS".equalsIgnoreCase(title) && "1000".equals(statusString)) {
+
+        int result = merchantOnboardAanipayService
+                .updateMerchantDeregisterStatus(merchantId);
+
+        if (result > 0) {
+
+            setMerchantDetailsList(
+                    merchantOnboardAanipayService.getaaniPayMerchantDetails(
+                            aaniPayMerchantDetailsBean.getSelectMerchantAanipayApi(),
+                            sessionBean));
+
+            addActionMessage("Merchant successfully deregistered!");
+            return SUCCESS;
+        }
+
+        log.error("Error occurred during DB update");
+        addActionError("Error occurred during update");
+        return ERROR;
+
+    } else {
+
+        log.error("Unexpected response from API : " + response);
+        addActionError("Unexpected response received from API");
+        return ERROR;
+    }
+
+}
+
+  -----------------------------------------------
+  2. JSON Builder Method (AanipayJsonConverter)
+  -----------------------------------------------
+
+public String
+acquireDeregisterMerchantJsonData(MerchantDetailsAaniPayBean bean) {
+
+    try {
+
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+
+        ObjectNode root = mapper.createObjectNode();
+
+        root.put("X-Request-ID", UUID.randomUUID().toString());
+        root.put("bankCode", bean.getBankCode());
+        root.put("groupCode", bean.getGroupCode());
+
+        ObjectNode merchant = root.putObject("merchant");
+
+        merchant.put("merchantTag", bean.getAniMercCode());
+        merchant.put("merchantId", bean.getMerchantId());
+
+        return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root);
+
+    } catch (Exception e) {
+        e.printStackTrace();
+        return null;
+    }
+
+}
+
+  --------------------------------------------
+  3. Validation Method (Service / DAO Layer)
+  --------------------------------------------
+
+public String validateAndDeregisterMerchant(String merchantId) {
+
+    String validationQuery =
+            "SELECT MMM_ANIP_MERCODE as aanipayid, MMM_AANI_STUS as aani_status " +
+            "FROM MPS_MERC_MERH_DETL " +
+            "WHERE MMM_MER_CODE = ?";
+
+    try {
+
+        Map<String, Object> result = jdbcTemplate.queryForMap(validationQuery, merchantId);
+
+        String aanipayId = result.get("aanipayid") != null
+                ? String.valueOf(result.get("aanipayid"))
+                : null;
+
+        Integer aaniStatus = null;
+
+        Object statusObj = result.get("aani_status");
+
+        if (statusObj != null) {
+            aaniStatus = ((Number) statusObj).intValue();
+        }
+
+        if (aanipayId == null || aanipayId.trim().isEmpty()) {
+            return "Merchant is not enrolled in AaniPay";
+        }
+
+        if (aaniStatus == null || aaniStatus != 1) {
+            return "Merchant already deregistered";
+        }
+
+        return null;
+
+    } catch (EmptyResultDataAccessException e) {
+
+        loggerUtil.error(e);
+        return "Merchant not found";
+
+    } catch (DataAccessException e) {
+
+        loggerUtil.error(e);
+        return "Error occurred while validating merchant";
+
+    } catch (Exception e) {
+
+        loggerUtil.error(e);
+        return "Error occurred while validating merchant";
+    }
+
+}
+
+  --------------------------------
+  4. DB Update After API Success
+  --------------------------------
+
+public int updateMerchantDeregisterStatus(String merchantId) {
+
+    String updateQuery =
+            "UPDATE MPS_MERC_MERH_DETL " +
+            "SET MMM_AANI_STUS = ?, MMM_MCUR_STUS = ? " +
+            "WHERE MMM_MER_CODE = ?";
+
+    return jdbcTemplate.update(updateQuery, 2, 0, merchantId);
+
+}
+
+  ---------
+  5. FLOW
+  ---------
+
+UI ↓ sendMerchantDetailsAndSaveResponse() ↓ deRegisterMerchant() ↓
+validateAndDeregisterMerchant() ↓ Create Deregister JSON ↓
+makeRestApiCall() ↓ Parse API Response ↓
+updateMerchantDeregisterStatus() ↓ SUCCESS MESSAGE
