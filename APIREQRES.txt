@@ -1,0 +1,106 @@
+Enrollment REQ - RES :
+
+{
+    "X-Request-ID": "b45d94ce-57ca-4e05-b67b-de11e8799fed7",
+    "bankCode": "00024",
+    "groupCode": "00024",
+    "merchant": {
+        "merchantId": "BB12345678901246",
+        "merchantLegalName": "Hello & Co. Ltd",
+        "vatNumber": "AE1234567T",
+        "mcc": "5888",
+        "mobile": "+97151234512390904",
+        "name": "John",
+        "surname": "Wick",
+        "bankAccounts": [
+            {
+                "IBAN": "AE070331234567890123456",
+                "currency": "AED"
+            },
+            {
+                "IBAN": "AE071234234567890123456",
+                "currency": "AED"
+            }
+        ],
+        "store": [
+            {
+                "terminalIds": [
+                    {
+                        "terminalId": "12345678"
+                    }
+                ],
+                "storeName": "Bakery",
+                "type": "ONLINE",
+                "storeId": "99999999",
+                "mcc": "1234",
+                "address": {
+                    "building": "35 ",
+                    "street": "Nassau street, 54",
+                    "city": "Abu Dhabi",
+                    "postalCode": "D02 AF30",
+                    "county": "Abu Dhabi",
+                    "country": "United Arab Emirates"
+                },
+                "bankAccount": {
+                    "IBAN": "AE071234234567890123456"
+                }
+            }
+        ]
+    }
+}
+
+Response :
+
+{
+    "traceId": "bbd7dfa78b7441d2a3ff46724971304e",
+    "type": "Success",
+    "title": "SUCCESS",
+    "status": "1000",
+    "detail": {
+        "bankCode": "00024",
+        "groupCode": "00024",
+        "merchant": {
+            "merchantId": "BB12345678901246",
+            "store": [
+                {
+                    "terminalIds": [
+                        {
+                            "terminalId": "12345678",
+                            "cashDeskId": "0"
+                        }
+                    ],
+                    "storeId": "8935447845543438",
+                    "shopId": "99999999"
+                }
+            ],
+            "merchantTag": "SX26MMK"
+        }
+    }
+}
+
+-------------------------------------------------------------------------------------
+
+Diregister API:
+
+{
+  "X-Request-ID": "{{$guid}}",
+  "bankCode": "99999",
+  "groupCode": "99999",
+  "merchant": {
+    "merchantTag": "UB776WH",
+    "merchantId": "AA12345678901246"
+  }
+}
+
+response :
+
+{
+    "traceId": "ff7ffec2f1d2434184cf5e3c1e8fdcd1",
+    "type": "Success",
+    "title": "SUCCESS",
+    "status": "1000",
+    "detail": {
+        "disableMerchant": "Success"
+    }
+}
+
