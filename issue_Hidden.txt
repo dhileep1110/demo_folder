@@ -1,0 +1,395 @@
+<%@ page contentType="text/html; charset=UTF-8"%>
+<%@ page contentType="text/html; charset=UTF-8"%>
+<%@ taglib prefix="s" uri="/struts-tags"%>
+<%@ taglib prefix="display" uri="http://displaytag.sf.net"%>
+<%@ taglib prefix="fmt" uri="http://java.sun.com/jsp/jstl/fmt"%>
+<%@ taglib prefix="core" uri="http://java.sun.com/jsp/jstl/core"%>
+
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>Merchant Onboard Aanipay Details</title>
+    
+</head>
+<script type="text/javascript">
+$(document).ready(function() {
+    $('#merchantDetailsListdata').DataTable( {
+        //"scrollY" : 300,
+        "scrollX" : true,
+        //"pagingType": "full_numbers",
+        //columnDefs: [
+		//				{ type: 'any-number', targets :[0,1]} ,
+        //               {type: 'natural', targets: 2 }
+        //            ]
+    } );
+} );
+document.addEventListener("DOMContentLoaded", function() {
+    const buttons = document.querySelectorAll("#RegisterLinkDisabled, #StoreDeRegisterLinkDisabled");
+
+    buttons.forEach(function(button) {
+        button.disabled = true; 
+        button.style.backgroundColor = "whitesmoke"; 
+        button.style.color = "#808080";
+        button.style.border = "1px solid #dcdcdc"; 
+        button.style.cursor = "not-allowed"; 
+        button.style.margin = "10px"; 
+        button.style.padding = "10px 15px"; 
+        button.style.borderRadius = "5px"; 
+    });
+});
+function setReferenceIdSubmit(referenceId, event) {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "<%=request.getContextPath()%>/merchantsales/MerchantOnboardAanipayApi.action";
+    
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "aaniPayMerchantDetailsBean.referenceId"; 
+    input.value = referenceId;
+
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+}
+
+
+function functionBackCall() {
+	var form = document.createElement('form');
+    form.method = 'post';
+    
+    form.action = "<%= request.getContextPath() %>/merchantsales/MerchantOnboardAanipayApi.action"; // Redirect URL
+    
+    const statusInput = document.createElement("input");
+    statusInput.type = "hidden";
+    statusInput.name = "selectMerchantAanipayApi";  // Name that will be used in Struts2 Action
+    statusInput.value = document.getElementById("hiddenSelectValue").value;  // Assign the value of status
+    form.appendChild(statusInput);
+   //alert("statusInput.value "+statusInput.value)
+
+  
+  
+    document.body.appendChild(form);
+    form.submit();
+}
+
+function setStoreRegisterLinkSubmit(registerValue, storeId, event) {
+	//alert("registervalue :: "+document.getElementById("hiddenRegisterValue").value);
+    // Create a form dynamically
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "<%=request.getContextPath()%>/merchantsales/getenrolmentShopJsonDataApi.action";
+
+    // Add hidden input fields
+    const storeIdField = document.createElement("input");
+    storeIdField.type = "hidden";
+    storeIdField.name = "storeId"; // Match backend parameter
+    storeIdField.value = storeId;
+    form.appendChild(storeIdField);
+    
+
+    const registerInput = document.createElement("input");
+    registerInput.type = "hidden";
+    registerInput.name = "registerValue"; 
+    registerInput.value =registerValue;  
+    form.appendChild(registerInput);
+    
+    
+    const statusInput = document.createElement("input");
+    statusInput.type = "hidden";
+    statusInput.name = "selectMerchantAanipayApi";  // Name that will be used in Struts2 Action
+    statusInput.value = document.getElementById("hiddenSelectValue").value;  // Assign the value of status
+    form.appendChild(statusInput);
+    
+    // Add the form to the body and submit
+    document.body.appendChild(form);
+    form.submit();
+}
+
+
+function setStoreDeRegisterLinkSubmit(deregister,storeId,event){
+
+	
+	const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "<%=request.getContextPath()%>/merchantsales/getenrolmentShopJsonDataApi.action";
+
+    const storeIdField = document.createElement("input");
+    storeIdField.type = "hidden";
+    storeIdField.name = "storeId"; // Match backend parameter
+    storeIdField.value = storeId;
+    form.appendChild(storeIdField);
+    
+    const statusInput = document.createElement("input");
+    statusInput.type = "hidden";
+    statusInput.name = "selectMerchantAanipayApi";  // Name that will be used in Struts2 Action
+    statusInput.value = document.getElementById("hiddenSelectValue").value;  // Assign the value of status
+    form.appendChild(statusInput);
+    
+    const deregisterInput = document.createElement("input");
+    deregisterInput.type = "hidden";
+    deregisterInput.name = "deregisterValue"; 
+    deregisterInput.value =deregister;  
+    form.appendChild(deregisterInput);
+    document.body.appendChild(form);
+    form.submit();
+	}
+
+//to forward in terminal
+function setSidSubmit(storeId,event)
+{
+	// Prevent the default action of the event (if any)
+    if (event) {
+        event.preventDefault();
+    }
+	 // Create a form element
+     const form = document.createElement("form");
+	 form.method = "POST";
+	 form.action = "<%=request.getContextPath()%>/merchantsales/TerminalOnboardAanipayApi.action";
+	 
+	 // Create hidden input fields
+	 const storepageInput = document.createElement("input");
+	 storepageInput.type = "hidden";
+	 storepageInput.name = "selectMerchantAanipayApi";
+	 storepageInput.value = document.getElementById("hiddenSelectValue").value;
+	 form.appendChild(storepageInput);
+
+	 const midLinkFlagInput = document.createElement("input");
+	 midLinkFlagInput.type = "hidden";
+	 midLinkFlagInput.name = "storeId";
+	 midLinkFlagInput.value = storeId;
+	 form.appendChild(midLinkFlagInput);
+	 
+	 document.body.appendChild(form);
+	 form.submit();
+}
+
+function validateAndSubmit(storeId, status, aaniPayId) {
+	
+	  if (aaniPayId == null || aaniPayId === "" || aaniPayId === "null") {
+	        alert("Please enroll store.");
+	        return; // Stop further execution
+	    }
+
+  // Proceed to call setSidSubmit if status is valid
+  setSidSubmit(storeId, event);
+}
+</script>
+
+<style>
+.dataTables_scrollBody .table.table-hover.table-striped.table-bordered.dataTable.no-footer {
+    width: 100% !important;
+}
+.dataTables_scrollHeadInner{
+ width: 100% !important;
+ padding: 0px !important;
+}
+</style>
+<body>
+
+<s:form id="dynamicForm" action="merchantOnboardAanipay" method="post">
+    <s:hidden name="merchant.merchantId" id="hiddenMerchantId" />
+    <s:hidden name="merchant.status" id="hiddenStatus" />
+    
+</s:form>
+
+    <section class="section-bg">
+        <div class="clearfix"></div>
+        <div class="divider dashed"></div>
+       <div class="box-head1">
+       <s:text name="merchant.onboard.aanipay.details" />
+      </div>
+
+        
+            <div class="container-fuild">
+		<table width="80%" border="0" align="center">
+				<tr>			
+					<td colspan="2" class="error">
+						<s:fielderror />
+						<s:actionerror />
+					</td>			
+				</tr>
+				<tr>			
+					<td colspan="2" class="actMessage">
+						<s:actionmessage/>
+					</td>			
+				</tr>
+		</table>
+	</div>
+	
+             <div class="container-fluid">
+           
+             
+            <table width="80%" align="center" border="0" cellspacing="4" cellpadding="4">
+			
+			<tr>
+				<td align="center"> 
+                            <display:table style="width:80%"
+							name="storeDetailsList" id="merchantDetailsListdata"
+							pagesize="25" class="its"
+							requestURI="merchantOnboardAanipay.action">
+
+
+
+
+							<display:column property="storeId"
+								title="${titleOfJspPage.StoreId}" />
+
+
+							<display:column property="aaniPayId"
+								title="${(titleOfJspPage.AanipayId) }" />
+							<display:column property="register"
+								title="${(titleOfJspPage.register) }" />
+							<display:column property="deregister"
+								title="${(titleOfJspPage.deregister) }" />
+							<display:column property="status"
+								title="${(titleOfJspPage.status) }" />
+							<display:column property="remark"
+								title="${(titleOfJspPage.remark) }" />
+						</display:table>
+
+					</td>
+			</tr>
+				
+		</table>
+             <div class="d-flex justify-content-center mt-3">
+           <input type="button" id="cButton" 
+                           value="<s:text name='CommonAction.back'/>" 
+                           class="btn btn-primary mx-2" 
+                           onclick="functionBackCall();">                  
+        </div>
+        </div>  
+<s:hidden name="selectMerchantAanipayApi" id="hiddenSelectValue" />
+<s:hidden name="merchantId" id="hiddenMerchantIdinmerchant" />
+<s:hidden name="aaniPayMerchantDetailsBean.merchantId" id="hiddenMerchantIdinmerchant" />
+<input type="hidden" id="hiddenStoreId" value="<s:property value='storeId'/>" />
+<s:hidden name="mIban" id="hiddenMerchantmIban" />
+
+
+
+        
+    </section>
+</body>
+</html>
+
+
+-----------------------------------------------------------------------------------------
+
+public class MerchantOnboardAanipayAction extends MapsBaseAction implements ModelDriven<MerchantDetailsAaniPayBean>, Preparable{
+
+	private static final long serialVersionUID = 1L;
+	LoggerUtil log = LoggerUtil.getInstance(getClass());
+	private MerchantOnboardAanipayService merchantOnboardAanipayService;
+
+	private static mpsConstants mpsConstantsInstance;
+	private List<MerchantDetailsAaniPayBean> merchantDetailsList;
+
+	private List<MerchantDetailsAaniPayBean> storeDetailsList;
+	
+	private List<MerchantDetailsAaniPayBean> terminalDetailsList;
+
+	private HashMap<String, String> titleOfJspPage = new HashMap<>();
+	
+	private Map<String, String> statusList;
+
+	private static final RestTemplate restTemplate = new RestTemplate();
+	
+	@Autowired
+    private SessionBean sessionBean;
+	
+	
+	private MerchantDetailsAaniPayBean aaniPayMerchantDetailsBean = new MerchantDetailsAaniPayBean();
+
+	
+	
+	
+	@Override
+	public MerchantDetailsAaniPayBean getModel() {
+		return aaniPayMerchantDetailsBean;
+	}
+
+	
+	
+	
+	
+	public MerchantDetailsAaniPayBean getAaniPayMerchantDetailsBean() {
+		return aaniPayMerchantDetailsBean;
+	}
+	
+	
+	
+
+	public void setAaniPayMerchantDetailsBean(MerchantDetailsAaniPayBean aaniPayMerchantDetailsBean) {
+		this.aaniPayMerchantDetailsBean = aaniPayMerchantDetailsBean;
+	}
+
+
+	public MerchantOnboardAanipayService getMerchantOnboardAanipayService() {
+		return merchantOnboardAanipayService;
+	}
+
+	public void setMerchantOnboardAanipayService(MerchantOnboardAanipayService merchantOnboardAanipayService) {
+		this.merchantOnboardAanipayService = merchantOnboardAanipayService;
+	}
+
+	public void setMerchantDetailsList(List<MerchantDetailsAaniPayBean> merchantDetailsList) {
+		this.merchantDetailsList = merchantDetailsList;
+	}
+	
+	 public String viewTerminalOnboardAanipayDetails() {
+    	
+    /*	if((aaniPayMerchantDetailsBean.getMerchantId() == null || aaniPayMerchantDetailsBean.getMerchantId().isEmpty())
+    		&& (httpServletRequest.getParameter("merchantId") != null || !httpServletRequest.getParameter("merchantId").isEmpty())) {
+    		System.out.println(httpServletRequest.getParameter("merchantId"));
+    		aaniPayMerchantDetailsBean.setMerchantId(httpServletRequest.getParameter("merchantId"));
+    	}*/
+		
+    	if (aaniPayMerchantDetailsBean == null || aaniPayMerchantDetailsBean.getSelectMerchantAanipayApi() == null || 
+    	    aaniPayMerchantDetailsBean.getMerchantId() == null || aaniPayMerchantDetailsBean.getStoreId() == null) {
+			addActionError(getText("error.merchant.details.invalid"));
+			return ERROR;
+		}
+		
+		setStoreDetailsList(merchantOnboardAanipayService
+				            .getaaniPayStoreDetails(aaniPayMerchantDetailsBean.getSelectMerchantAanipayApi(), 
+				            aaniPayMerchantDetailsBean.getMerchantId(),
+				            sessionBean));
+		try {
+
+			String storeStatus = merchantOnboardAanipayService
+					.validateStorStatusBasedOnSid(aaniPayMerchantDetailsBean.getStoreId(), sessionBean.getInstCode());
+			if (storeStatus == null) {
+				addActionError("No store status found. Please check the Store ID.");
+				return ERROR;
+			} else {
+				terminalDetailsList = merchantOnboardAanipayService
+						        .getaaniPayTerminalDetails(storeStatus, aaniPayMerchantDetailsBean.getStoreId(), sessionBean);
+
+			}
+
+			if (terminalDetailsList == null || terminalDetailsList.isEmpty()) {
+				addActionError("No Store Found ");
+				return ERROR;
+			}
+
+		} catch (Exception e) {
+			log.error("Error fetching store details", e);
+			addActionError("Error while  fetching store details   ");
+			return ERROR;
+		}
+
+		return SUCCESS;
+	}
+	
+
+
+
+--------------------
+
+Xml:
+
+ <action name="TerminalOnboardAanipayApi" class="com.fss.maps.merchantsales.merchantOnboardAanipay.action.MerchantOnboardAanipayAction" method="viewTerminalOnboardAanipayDetails">
+	 	<interceptor-ref name="defaultStack" />
+		<result name="input"  type="tiles" >maps.merchantsales.merchantOnboardAanipay.TerminalOnboardanipayPage</result>			
+		<result name="error"  type="tiles" >maps.merchantsales.merchantOnboardAanipay.TerminalOnboardanipayPage</result>			
+		<result name="success"  type="tiles">maps.merchantsales.merchantOnboardAanipay.TerminalOnboardanipayPage</result>
+	 </action>
