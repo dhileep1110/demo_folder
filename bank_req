@@ -1,0 +1,28 @@
+Consent E-mail Security:
+
+Discussion / Observation:
+The consent e-mail sent to merchants contains a clickable URL. Concern raised that GIS (security team) may flag this as a spam/phishing link.
+
+Action:
+Add OTP validation on URL click for security. OTP sent to merchant email for 2FA. Also  From-email ID is a trusted whitelisted bank address
+
+Consent E-mail – Bank CC:
+
+Discussion / Observation:
+Discussed that merchants sometimes miss or ignore the consent e-mail. A bank group e-mail ID should be CC on the consent e-mail so the DO user can re-forward if needed.
+
+Action:
+Add a bank group e-mail as CC on all consent e-mails. DO user will re-forward from that mailbox to obtain merchant consent where required.(before URL expiry)
+
+Processing Records Without Consent:
+
+Discussion / Observation:
+Current flow blocks DO users from accessing a merchant record until consent is received. Request raised to allow DO users to view all uploaded records regardless of consent status, with a visible flag showing consent state (e.g., Consent Pending / Consent Received).
+
+Action:
+New Change Request – Current flow developed as per DIB requirement document shared earlier. Allowing DO enrichment before consent is a workflow change and will be taken as an additional CR. Effort to be estimated and approved before proceeding.
+
+
+
+
+
