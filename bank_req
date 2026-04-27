@@ -188,4 +188,185 @@ public List<MerchantOnboardBean> getmerchantOnboardSearchResultDetails(Integer i
 	}
 
 
+public List<MerchantOnboardBean> getmerchantOnboardSearchResultDetails(
+        Integer instId, MerchantOnboardBean merchantOnboardBean, String dateFormat) {
 
+    List<MerchantOnboardBean> list = null;
+    StringBuffer strQry = new StringBuffer();
+
+    try {
+
+        strQry.append(" SELECT MSM.MSM_REFR_SQID , MSM.MSM_LEGL_NAME, MSM.MSM_APPL_NMBR, ")
+              .append(" TO_CHAR(MSM.MSM_INST_INDT, ?) AS Referral_Date, ")
+              .append(" CASE WHEN MSM.MSM_AGGR_NAME IS NULL THEN 'Direct Merchant' ELSE 'Partner Merchant' END AS Merchant_Type, ")
+              .append(" MSM.MSM_REC_STUS, MSM.MSM_STOR_FLAG, MSM.MSM_SRCE_BANK, ")
+
+              // ✅ CONSENT STATUS COLUMN
+              .append(" CASE ")
+              .append("   WHEN MSM.MSM_SRCE_BANK = 'IB' THEN NVL(CONSD.MAM_CSNT_STUS, 'PENDING') ")
+              .append("   ELSE 'NA' ")
+              .append(" END AS CONSENT_STATUS, ")
+
+              .append(" NVL(REFR.ACTV_CNT, 0) AS ACTV_MERH ")
+
+              .append(" FROM MPS_SPOB_MERC_TEMP MSM ")
+
+              // ✅ Merchant aggregation
+              .append(" LEFT JOIN ( ")
+              .append("   SELECT MMM_REFR_SQID, COUNT(*) AS ACTV_CNT ")
+              .append("   FROM MPS_MERC_MERH_DETL ")
+              .append("   WHERE MMM_MCUR_STUS NOT IN (0, 90, 91) ")
+              .append("   GROUP BY MMM_REFR_SQID ")
+              .append(" ) REFR ON REFR.MMM_REFR_SQID = MSM.MSM_REFR_SQID ")
+
+              // ✅ Consent aggregation (avoid duplicates)
+              .append(" LEFT JOIN ( ")
+              .append("   SELECT MAM_APPL_NO, MAX(MAM_CSNT_STUS) AS MAM_CSNT_STUS ")
+              .append("   FROM MPS_EMAIL_AUDT_LOG ")
+              .append("   GROUP BY MAM_APPL_NO ")
+              .append(" ) CONSD ON CONSD.MAM_APPL_NO = MSM.MSM_APPL_NMBR ")
+
+              .append(" WHERE MSM.MSM_INST_SQID = ? ")
+
+              // ✅ Keep existing exclusion logic
+              .append(" AND NOT EXISTS ( ")
+              .append("   SELECT 1 FROM MPS_MERC_MERH_DETL D ")
+              .append("   WHERE D.MMM_REFR_SQID = MSM.MSM_REFR_SQID ")
+              .append("   AND D.MMM_MCUR_STUS IN (90, 91) ")
+              .append(" ) ");
+
+        // ================= FILTERS =================
+
+        if (merchantOnboardBean.getOnboardMethod() != null &&
+                merchantOnboardBean.getOnboardMethod().equalsIgnoreCase("1")) {
+
+            strQry.append(" AND MSM.MSM_AGGR_NAME IS NULL ");
+
+            if (merchantOnboardBean.getLegalname() != null && !merchantOnboardBean.getLegalname().trim().isEmpty()) {
+                strQry.append(" AND UPPER(MSM.MSM_LEGL_NAME) LIKE UPPER('%" + merchantOnboardBean.getLegalname() + "%') ");
+            }
+
+        } else if (merchantOnboardBean.getOnboardMethod() != null &&
+                merchantOnboardBean.getOnboardMethod().equalsIgnoreCase("2")) {
+
+            strQry.append(" AND MSM.MSM_AGGR_NAME IS NOT NULL ");
+
+            if (merchantOnboardBean.getLegalname() != null && !merchantOnboardBean.getLegalname().trim().isEmpty()) {
+                strQry.append(" AND UPPER(MSM.MSM_AGGR_NAME) LIKE UPPER('%" + merchantOnboardBean.getLegalname() + "%') ");
+            }
+
+        } else {
+
+            if (merchantOnboardBean.getLegalname() != null && !merchantOnboardBean.getLegalname().trim().isEmpty()) {
+                strQry.append(" AND ( UPPER(MSM.MSM_LEGL_NAME) LIKE UPPER('%" + merchantOnboardBean.getLegalname() + "%') ")
+                      .append(" OR UPPER(MSM.MSM_AGGR_NAME) LIKE UPPER('%" + merchantOnboardBean.getLegalname() + "%') ) ");
+            }
+        }
+
+        if ("1".equalsIgnoreCase(merchantOnboardBean.getSelectSearchBy())) {
+            strQry.append(" AND MSM.MSM_REC_STUS IN (0, 1) ");
+        } else if ("2".equalsIgnoreCase(merchantOnboardBean.getSelectSearchBy())) {
+            strQry.append(" AND MSM.MSM_REC_STUS IN (8) ");
+        } else if ("3".equalsIgnoreCase(merchantOnboardBean.getSelectSearchBy())) {
+            strQry.append(" AND MSM.MSM_REC_STUS IN (3, 4) ");
+        } else if ("4".equalsIgnoreCase(merchantOnboardBean.getSelectSearchBy())) {
+            strQry.append(" AND MSM.MSM_REC_STUS IN (5) ");
+        } else if ("5".equalsIgnoreCase(merchantOnboardBean.getSelectSearchBy())) {
+            strQry.append(" AND MSM.MSM_REC_STUS IN (7) ");
+        }
+
+        if (merchantOnboardBean.getRefNo() != null && !merchantOnboardBean.getRefNo().trim().isEmpty()) {
+            strQry.append(" AND MSM.MSM_REFR_SQID LIKE '%" + merchantOnboardBean.getRefNo() + "%' ");
+        }
+
+        if (merchantOnboardBean.getApplNum() != null && !merchantOnboardBean.getApplNum().trim().isEmpty()) {
+            strQry.append(" AND MSM.MSM_APPL_NMBR LIKE '%" + merchantOnboardBean.getApplNum() + "%' ");
+        }
+
+        strQry.append(" ORDER BY MSM.MSM_REFR_SQID DESC ");
+
+        // ================= QUERY EXECUTION =================
+
+        list = jdbcTemplate.query(strQry.toString(), new RowMapper<MerchantOnboardBean>() {
+
+            public MerchantOnboardBean mapRow(ResultSet rs, int rowNum) throws SQLException {
+
+                MerchantOnboardBean searchBean = new MerchantOnboardBean();
+
+                String refNo = rs.getString(1);
+                int activeMerchant = rs.getInt("ACTV_MERH");
+                String recStatus = rs.getString(6);
+                String srcType = rs.getString(8);
+                String consentStatus = rs.getString("CONSENT_STATUS");
+
+                searchBean.setAdditionalNewStoreFlag(rs.getInt("MSM_STOR_FLAG"));
+                searchBean.setRefNo(refNo);
+                searchBean.setRefNoHref(refNo);
+                searchBean.setRefNoHrefEdit("<INPUT type='submit' value='" + refNo +
+                        "' onclick=\"fn_view('" + refNo + "','0');\" class='hrefButton' />");
+
+                searchBean.setLegalname(rs.getString(2));
+                searchBean.setRefDate(rs.getString(4));
+                searchBean.setOnboardMethod(rs.getString(5));
+                searchBean.setSrcType(srcType);
+                searchBean.setConsentStatus(consentStatus);
+
+                // ================= EDIT BUTTON LOGIC =================
+
+                if ("IB".equalsIgnoreCase(srcType) && "APPROVED".equalsIgnoreCase(consentStatus)) {
+                    searchBean.setRefRecStatus("<INPUT type='submit' value='EDIT' class='hrefButton' disabled />");
+                } else if (!recStatus.equals("5") && !recStatus.equals("6")
+                        && !recStatus.equals("7") && !recStatus.equals("9")) {
+
+                    searchBean.setRefRecStatus("<INPUT type='submit' value='EDIT' class='hrefButton' onclick=\"fn_edit('" +
+                            refNo + "','" + searchBean.getAdditionalNewStoreFlag() + "');\" />");
+                }
+
+                // ================= STATUS =================
+
+                switch (rs.getByte("MSM_REC_STUS")) {
+                    case 0:
+                    case 1:
+                        searchBean.setStatus("PENDING");
+                        break;
+                    case 2:
+                        searchBean.setStatus("APPROVED");
+                        break;
+                    case 3:
+                    case 4:
+                        searchBean.setStatus("ERROR");
+                        break;
+                    case 5:
+                        searchBean.setStatus(activeMerchant > 0 ? "MERCHANT ONBOARDED" : "APPROVED BY COMPLIANCE");
+                        break;
+                    case 6:
+                        searchBean.setStatus("DUPLICATE");
+                        break;
+                    case 7:
+                        searchBean.setStatus("REJECTED");
+                        break;
+                    case 8:
+                        searchBean.setStatus("REASSIGNED BY COMPLIANCE");
+                        break;
+                    case 9:
+                        searchBean.setStatus("DEACTIVATED");
+                        break;
+                    default:
+                        searchBean.setStatus("PENDING");
+                }
+
+                searchBean.setApplNum(rs.getString(3));
+
+                return searchBean;
+            }
+
+        }, dateFormat, instId);
+
+    } catch (Exception e) {
+        loggerUtil.error("Error occured in getmerchantOnboardSearchResultDetails() - " + e.getMessage());
+    } finally {
+        strQry = null;
+    }
+
+    return list;
+}
