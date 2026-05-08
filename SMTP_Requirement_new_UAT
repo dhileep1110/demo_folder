@@ -94,3 +94,268 @@ EmailSerive our code :
 			throw e; 
 		}
 	}
+Code for development:
+public void sendEmail(EmailBean emailBean) throws Exception {
+
+	try {
+
+		String hostName = null;
+		String portNumber = null;
+		String smtpUser = null;
+		String smtpPassword = null;
+		String decryptedPassword = null;
+		String text = null;
+
+		String osname = System.getProperty("os.name");
+
+		try {
+
+			// ---------------------------------------------------
+			// Email Template Path
+			// ---------------------------------------------------
+
+			ApplicationContext applicationContext =
+					CustomApplicationContext.getApplicationContext();
+
+			ParameterValuesService paramValueService =
+					(ParameterValuesService) applicationContext
+					.getBean("parameterValuesServiceImpl");
+
+			if (osname.startsWith("Windows")) {
+
+				EMAIL_PATH = "C:/DIB_MAPSCore/Config_1/mailTemplate/";
+
+			} else {
+
+				EMAIL_PATH = paramValueService
+						.getGenrParamValue(MapsConstants.SYSTEM_EMAIL_PATH);
+			}
+
+			// ---------------------------------------------------
+			// SMTP CONFIG FROM DB
+			// ---------------------------------------------------
+
+			hostName = emailServiceDao.getHost(SMTP_KEY);
+
+			portNumber = emailServiceDao.getHost(SMTP_PORT).trim();
+
+			smtpUser = emailServiceDao.getHost("SMTP_USERNAME");
+
+			smtpPassword = emailServiceDao.getHost("SMTP_PASSWORD");
+
+			// ---------------------------------------------------
+			// DECRYPT PASSWORD
+			// ---------------------------------------------------
+			// Use your existing decryption utility here
+
+			decryptedPassword = smtpPassword;
+
+			/*
+			Example:
+
+			decryptedPassword =
+					AESEncryption.decrypt(smtpPassword);
+			*/
+
+		} catch (NullPointerException npe) {
+
+			LOG.error("Emailing is disabled : " + npe.getMessage());
+		}
+
+		// ---------------------------------------------------
+		// VALIDATIONS
+		// ---------------------------------------------------
+
+		if (StringUtils.isEmpty(hostName)) {
+
+			LOG.info("SMTP Host is missing.");
+
+		} else if (StringUtils.isEmpty(portNumber)) {
+
+			LOG.info("SMTP Port is missing.");
+
+		} else if (!MAPSUtils.isNumeric(portNumber)) {
+
+			LOG.info("SMTP Port should be numeric.");
+
+		} else {
+
+			// ---------------------------------------------------
+			// SMTP SERVER CONFIGURATION
+			// ---------------------------------------------------
+
+			mailSender.setHost(hostName);
+
+			mailSender.setPort(Integer.parseInt(portNumber));
+
+			// ---------------------------------------------------
+			// SMTP AUTHENTICATION
+			// ---------------------------------------------------
+
+			mailSender.setUsername(smtpUser);
+
+			mailSender.setPassword(decryptedPassword);
+
+			// ---------------------------------------------------
+			// SMTP PROPERTIES
+			// ---------------------------------------------------
+
+			Properties props = mailSender.getJavaMailProperties();
+
+			// SMTP AUTH
+			props.put("mail.smtp.auth", "true");
+
+			// TLS
+			props.put("mail.smtp.starttls.enable", "true");
+
+			props.put("mail.smtp.starttls.required", "true");
+
+			// TLS VERSION
+			props.put("mail.smtp.ssl.protocols", "TLSv1.2");
+
+			// OPTIONAL AUTH MECHANISMS
+			props.put("mail.smtp.auth.mechanisms", "LOGIN PLAIN");
+
+			// TIMEOUTS
+			props.put("mail.smtp.connectiontimeout", "10000");
+
+			props.put("mail.smtp.timeout", "10000");
+
+			props.put("mail.smtp.writetimeout", "10000");
+
+			// DEBUG LOGS FOR UAT TESTING
+			props.put("mail.debug", "true");
+
+			// ---------------------------------------------------
+			// SMTP LOGS
+			// ---------------------------------------------------
+
+			LOG.info("SMTP HOST :: " + hostName);
+
+			LOG.info("SMTP PORT :: " + portNumber);
+
+			LOG.info("SMTP USER :: " + smtpUser);
+
+			// ---------------------------------------------------
+			// CREATE MESSAGE
+			// ---------------------------------------------------
+
+			MimeMessage message = mailSender.createMimeMessage();
+
+			MimeMessageHelper mime =
+					new MimeMessageHelper(
+							message,
+							true,
+							MapsConstants.CHARACTER_ENCODING);
+
+			// ---------------------------------------------------
+			// FROM ADDRESS
+			// ---------------------------------------------------
+
+			if (emailBean.isDefaultFromRequired()) {
+
+				emailBean.setFrom(
+						emailServiceDao
+						.getFromAddress(FROM_ADD_KEY)
+						.trim());
+			}
+
+			String[] fromMail = emailBean.getFrom().split(",");
+
+			mime.setFrom(fromMail[0]);
+
+			// ---------------------------------------------------
+			// TO ADDRESS
+			// ---------------------------------------------------
+
+			if (emailBean.getTo().contains(",")) {
+
+				mime.setTo(emailBean.getTo().split(","));
+
+			} else {
+
+				mime.setTo(emailBean.getTo());
+			}
+
+			// ---------------------------------------------------
+			// CC ADDRESS
+			// ---------------------------------------------------
+
+			if (!nullOrEmpty(emailBean.getCc())) {
+
+				mime.setCc(emailBean.getCc().split(","));
+			}
+
+			// ---------------------------------------------------
+			// SUBJECT
+			// ---------------------------------------------------
+
+			mime.setPriority(getPriority());
+
+			mime.setSubject(emailBean.getSubject());
+
+			// ---------------------------------------------------
+			// TEMPLATE / BODY
+			// ---------------------------------------------------
+
+			if (emailBean.getVelocityTemplateName() != null) {
+
+				velocityEngine = getFileResourceLoaderEngine();
+
+				velocityEngine.init();
+
+				VelocityContext context =
+						new VelocityContext(
+								emailBean.getBodyVariables());
+
+				Template template =
+						velocityEngine.getTemplate(
+								emailBean.getVelocityTemplateName());
+
+				StringWriter writer = new StringWriter();
+
+				template.merge(context, writer);
+
+				text = writer.toString();
+
+			} else {
+
+				text = emailBean.getText();
+			}
+
+			// ---------------------------------------------------
+			// HTML BODY
+			// ---------------------------------------------------
+
+			mime.setText(text, true);
+
+			// ---------------------------------------------------
+			// LOGS
+			// ---------------------------------------------------
+
+			LOG.info("FROM :: " + fromMail[0]);
+
+			LOG.info("TO :: " + emailBean.getTo());
+
+			LOG.info("CC :: " + emailBean.getCc());
+
+			LOG.info("SUBJECT :: " + emailBean.getSubject());
+
+			LOG.info("Sending Email Started...");
+
+			// ---------------------------------------------------
+			// SEND MAIL
+			// ---------------------------------------------------
+
+			mailSender.send(message);
+
+			LOG.info("Email Sent Successfully.");
+		}
+
+	} catch (Exception e) {
+
+		LOG.error("Failed to send email", e);
+
+		throw e;
+	}
+}
