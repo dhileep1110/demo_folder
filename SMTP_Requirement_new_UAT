@@ -1,0 +1,96 @@
+https://www.infobip.com/docs/email/email-over-smtp
+https://www.infobip.com/docs/email/email-over-smtp/set-up-integration-with-infobip-smtp-api
+https://www.infobip.com/docs/email/get-started-with-email/set-up-your-domain
+
+EmailSerive our code :
+
+	public void sendEmail(EmailBean emailBean) throws Exception {
+		try {
+			String hostName =null;
+			String portNumber = null;
+			String text=null;
+			String osname = System.getProperty("os.name");
+			try {
+				
+				// Code Added for Email Path Configuration - Supports both Windows and Linux - Starts
+				ApplicationContext applicationContext = CustomApplicationContext.getApplicationContext();
+				ParameterValuesService paramValueService = (ParameterValuesService) applicationContext.getBean("parameterValuesServiceImpl");
+				if (osname.startsWith("Windows")) {
+					EMAIL_PATH ="C:/DIB_MAPSCore/Config_1/mailTemplate/";
+				} else {
+					EMAIL_PATH = paramValueService.getGenrParamValue(MapsConstants.SYSTEM_EMAIL_PATH);
+				}
+				// Code Added for Email Path Configuration - Supports both Windows and Linux - Ends
+				
+				hostName = emailServiceDao.getHost(SMTP_KEY);
+				portNumber = emailServiceDao.getHost(SMTP_PORT).trim();
+			} catch (NullPointerException npe) {
+				
+				LOG.error("Emailing is disabled"+npe.getMessage());
+			}
+			if (StringUtils.isEmpty(hostName)) {
+				LOG.info("Emailing is disabled. To enable, configure the mail server host name in db");
+			}else if(StringUtils.isEmpty(portNumber)){
+				LOG.info("Emailing is disabled. To enable, configure the mail server port in db");
+			}else if(!MAPSUtils.isNumeric(portNumber)){
+				LOG.info("Emailing is disabled. To enable, configure valid mail server port in db - Numeric Only");
+			}else {
+				mailSender.setHost(hostName);
+				mailSender.setPort(Integer.parseInt(portNumber));
+				MimeMessage message = mailSender.createMimeMessage();
+				MimeMessageHelper mime = new MimeMessageHelper(message, true, MapsConstants.CHARACTER_ENCODING);
+				LOG.info("emailBean.isDefaultFromRequired()"+emailBean.isDefaultFromRequired());
+				if (emailBean.isDefaultFromRequired()) {
+					
+					emailBean.setFrom(emailServiceDao.getFromAddress(FROM_ADD_KEY).trim());
+				}
+				
+				String[] fromMail=emailBean.getFrom().split(",");
+				mime.setFrom(fromMail[0]);
+				if(emailBean.getTo().contains(","))
+				{
+				mime.setTo(emailBean.getTo().split(","));
+				}
+				else
+				{
+					mime.setTo(emailBean.getTo());
+				}
+				if (!nullOrEmpty(emailBean.getCc())) {
+					mime.setCc(emailBean.getCc().split(","));
+				}
+				
+				// Start:Gaurav Logger added as requested by SIT team
+				LOG.info("hostName::"+hostName);
+				LOG.info("portNumber::"+portNumber);
+				LOG.info("emailBean.isDefaultFromRequired()::"+emailBean.isDefaultFromRequired());
+				LOG.info("fromMail[0]::"+fromMail[0]);
+				LOG.info("emailBean.getTo()::"+emailBean.getTo());
+				LOG.info("emailBean.getCc()::"+emailBean.getCc());
+				LOG.info("getPriority()::"+getPriority());
+				LOG.info("emailBean.getSubject()::"+emailBean.getSubject());
+			
+				// End:Gaurav
+
+				mime.setPriority(getPriority());
+				mime.setSubject(emailBean.getSubject());
+				if(emailBean.getVelocityTemplateName()!=null){
+					//text = VelocityEngine.mergeTemplateIntoString(getFileResourceLoaderEngine(), emailBean.getVelocityTemplateName(), MapsConstants.CHARACTER_ENCODING, emailBean.getBodyVariables());
+					velocityEngine = getFileResourceLoaderEngine();
+					velocityEngine.init();		
+			        VelocityContext context = new VelocityContext(emailBean.getBodyVariables());
+			        Template template = velocityEngine.getTemplate(emailBean.getVelocityTemplateName());    
+			        StringWriter writer = new StringWriter();
+			        template.merge(context, writer);
+			        text = writer.toString();
+				}else{
+					text=emailBean.getText();
+				}
+				
+				mime.setText(text, true);
+				mailSender.send(message);
+			}
+		}catch(Exception e ){
+			LOG.error("Failed to send email", e);
+			throw e; 
+		}
+	}
