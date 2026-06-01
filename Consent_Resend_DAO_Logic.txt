@@ -1,0 +1,140 @@
+
+CONSENT RESEND FLOW - DAO METHOD LOGIC
+
+1. ACTION METHOD
+
+public String resendConsent() {
+
+    try {
+
+        boolean status = emailServiceDao.resendConsentMail(applNo);
+
+        if(status) {
+            addActionMessage("Consent email resent successfully.");
+        } else {
+            addActionError("Unable to resend consent email.");
+        }
+
+    } catch(Exception e) {
+
+        loggerUtil.error("Error while resending consent", e);
+        addActionError("Error while resending consent email.");
+    }
+
+    return SUCCESS;
+}
+
+
+2. DAO METHOD
+
+public boolean resendConsentMail(String applNo) {
+
+    try {
+
+        String token = UUID.randomUUID().toString();
+
+        String selectQry =
+            "SELECT MAM_EMAIL_ID, MAM_MERC_NAME " +
+            "FROM MPS_EMAIL_AUDT_LOG " +
+            "WHERE MAM_APPL_NO = ?";
+
+        Map<String,Object> data =
+            jdbcTemplate.queryForMap(selectQry, applNo);
+
+        String emailId =
+            (String)data.get("MAM_EMAIL_ID");
+
+        String merchantName =
+            (String)data.get("MAM_MERC_NAME");
+
+        int updateCount = jdbcTemplate.update(
+            "UPDATE MPS_EMAIL_AUDT_LOG " +
+            "SET MAM_TOKEN = ?, " +
+            "    MAM_SENT_DT = SYSDATE, " +
+            "    MAM_EXP_DT = SYSDATE + 2, " +
+            "    MAM_CSNT_STUS = 'PENDING', " +
+            "    MAM_RESEND_CNT = NVL(MAM_RESEND_CNT,0)+1, " +
+            "    MAM_LAST_RESEND_DT = SYSDATE " +
+            "WHERE MAM_APPL_NO = ?",
+            token,
+            applNo);
+
+        if(updateCount > 0) {
+
+            String consentUrl =
+                baseUrl + "/consentProcess.action?token=" + token;
+
+            EmailBean emailBean = new EmailBean();
+
+            emailBean.setTo(emailId);
+
+            emailBean.setSubject(
+                "Merchant Consent");
+
+            Map<String,Object> bodyVariables =
+                new HashMap<String,Object>();
+
+            bodyVariables.put(
+                "merchantName",
+                merchantName);
+
+            bodyVariables.put(
+                "consentUrl",
+                consentUrl);
+
+            emailBean.setBodyVariables(
+                bodyVariables);
+
+            emailBean.setVelocityTemplateName(
+                "ConsentTemplate.vm");
+
+            sendEmail(emailBean);
+
+            return true;
+        }
+
+    } catch(Exception e) {
+
+        loggerUtil.error(
+            "Error while resend consent mail",
+            e);
+    }
+
+    return false;
+}
+
+
+3. JSP JAVASCRIPT
+
+function fn_resendConsent(applNo){
+
+    if(confirm(
+        "Do you want to resend consent email?")){
+
+        document.forms[0].action =
+            "resendConsent.action?applNo="
+            + applNo;
+
+        document.forms[0].submit();
+    }
+}
+
+
+4. STRUTS XML
+
+<action name="resendConsent"
+        class="com.fss.maps.common.action.ConsentAction"
+        method="resendConsent">
+
+    <interceptor-ref name="basicStack"/>
+
+    <result name="success"
+            type="redirectAction">
+        consentList
+    </result>
+
+    <result name="error">
+        /others/ConsentList.jsp
+    </result>
+
+</action>
