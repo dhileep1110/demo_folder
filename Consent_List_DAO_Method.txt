@@ -1,0 +1,132 @@
+
+CONSENT LIST DAO METHOD
+
+public List<MerchantOnboardBean> getConsentListDetails() {
+
+    List<MerchantOnboardBean> list = null;
+    StringBuilder strQry = new StringBuilder();
+
+    try {
+
+        strQry.append(" SELECT ")
+              .append(" MAM_APPL_NO, ")
+              .append(" MAM_MERC_NAME, ")
+              .append(" MAM_EMAIL_ID, ")
+              .append(" TO_CHAR(MAM_SENT_DT,'DD-MON-YYYY HH24:MI') AS SENT_DT, ")
+              .append(" TO_CHAR(MAM_EXP_DT,'DD-MON-YYYY HH24:MI') AS EXP_DT, ")
+              .append(" CASE ")
+              .append("   WHEN UPPER(MAM_CSNT_STUS) = 'APPROVED' ")
+              .append("        THEN 'APPROVED' ")
+              .append("   WHEN UPPER(MAM_CSNT_STUS) = 'REJECTED' ")
+              .append("        THEN 'REJECTED' ")
+              .append("   WHEN MAM_EXP_DT < SYSDATE ")
+              .append("        THEN 'EXPIRED' ")
+              .append("   ELSE 'PENDING' ")
+              .append(" END AS CONSENT_STATUS ")
+              .append(" FROM MPS_EMAIL_AUDT_LOG ")
+              .append(" ORDER BY MAM_SENT_DT DESC ");
+
+        list = jdbcTemplate.query(
+            strQry.toString(),
+            new RowMapper<MerchantOnboardBean>() {
+
+            public MerchantOnboardBean mapRow(
+                    ResultSet rs,
+                    int rowNum)
+                    throws SQLException {
+
+                MerchantOnboardBean bean =
+                    new MerchantOnboardBean();
+
+                bean.setApplNum(
+                    rs.getString("MAM_APPL_NO"));
+
+                bean.setMerchantName(
+                    rs.getString("MAM_MERC_NAME"));
+
+                bean.setEmailId(
+                    rs.getString("MAM_EMAIL_ID"));
+
+                bean.setSentDate(
+                    rs.getString("SENT_DT"));
+
+                bean.setExpiryDate(
+                    rs.getString("EXP_DT"));
+
+                String consentStatus =
+                    rs.getString("CONSENT_STATUS");
+
+                bean.setConsentStatus(
+                    consentStatus);
+
+                if ("PENDING".equalsIgnoreCase(consentStatus)
+                    || "EXPIRED".equalsIgnoreCase(consentStatus)
+                    || "REJECTED".equalsIgnoreCase(consentStatus)) {
+
+                    bean.setResendBtn(
+                        "<INPUT type='button' "
+                      + "value='RESEND' "
+                      + "class='hrefButton' "
+                      + "onclick=\"fn_resendConsent('"
+                      + rs.getString("MAM_APPL_NO")
+                      + "');\" />");
+
+                } else {
+
+                    bean.setResendBtn("-");
+                }
+
+                return bean;
+            }
+        });
+
+    } catch(Exception e) {
+
+        loggerUtil.error(
+            "Error occured in getConsentListDetails()",
+            e);
+    }
+
+    return list;
+}
+
+
+BEAN FIELDS REQUIRED
+
+private String applNum;
+private String merchantName;
+private String emailId;
+private String sentDate;
+private String expiryDate;
+private String consentStatus;
+private String resendBtn;
+
+
+JSP COLUMNS
+
+Merchant ID
+Merchant Name
+Email ID
+Mail Sent Date
+Mail Expiry Date
+Consent Status
+Action
+
+
+STATUS LOGIC
+
+APPROVED -> Approved
+REJECTED -> Rejected
+PENDING + Expiry Passed -> Expired
+PENDING + Not Expired -> Pending
+
+
+ACTION LOGIC
+
+APPROVED -> No Resend
+
+PENDING -> Resend
+
+EXPIRED -> Resend
+
+REJECTED -> Resend
