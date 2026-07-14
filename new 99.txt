@@ -1,0 +1,9 @@
+In my project have Struct2 framework java application and for frontend using JSP.
+Flow: we are maintaining Merchant Onboarding POrtal. Like while onboarding merchant with Stores & Terminals flow like one merchant under multiple stores each store have multiple terminal atleast 1 store under merchant but terminal needed not mandatory.
+Onboarding flow having add merchant , Add new store after onboarded , edit , view for maker above mentioned.
+but have to view the details and approve/reject actions
+Requirement: we are maintaining Merchant Pricing details under have Transaction source field there having fileldsvalues like Cybersource and Aanipay.
+If Merchant selects AAnipay or Cybersource,AAnipay ---> is Terminal Needed field not shown to user like in UI but need to set values isTermNeed value as 1 , auto generate value to both In Terminal Id & Terminal name and also set Terminal profile should be pass ECOm default and set Payment Type as AAnipay in backened or anything....
+and this case pass auto generate value of Terminal ID to Terminal name also MerchantOnboardMakerAction.isTerminal -- Is Terminal needed merchantOnboardBean.merchantEntityName ---  Transaction Source for aanipay Transaction source like -- 10 and 5,10
+i will share regaeding Jsp files and also java files for action class and Dao. so, analze give me idea and apply the change if possible
+don't change any existing code just add new if required and reshare file again me only changed files
